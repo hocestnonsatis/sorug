@@ -1,0 +1,51 @@
+[package]
+name = "sorug"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Ultra-high-performance, zero-copy, WHATWG-compliant URL parser"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/hocestnonsatis/sorug"
+homepage = "https://github.com/hocestnonsatis/sorug"
+documentation = "https://docs.rs/sorug"
+# Ready for crates.io when we cut the first release; until then consumers
+# should depend via `git = "https://github.com/hocestnonsatis/sorug"`.
+publish = true
+keywords = ["url", "parser", "whatwg", "simd", "swar"]
+categories = ["parser-implementations", "network-programming"]
+exclude = ["memories.md", "target/"]
+
+[dependencies]
+# SIMD-accelerated single/multi-byte delimiter scanning (`:`, `/`, `?`, `#`, …)
+memchr = { version = "2.7", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+criterion = "0.5"
+url = "2.5"
+ada-url = "4"
+
+[[bench]]
+name = "url_benchmark"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
