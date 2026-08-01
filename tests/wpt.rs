@@ -119,9 +119,7 @@ fn wpt_urltestdata() {
 
     if failed > 0 {
         let extra = failed.saturating_sub(failures.len());
-        let mut msg = format!(
-            "{failed} WPT case(s) failed:\n"
-        );
+        let mut msg = format!("{failed} WPT case(s) failed:\n");
         for line in &failures {
             msg.push_str("  • ");
             msg.push_str(line);
@@ -137,9 +135,8 @@ fn wpt_urltestdata() {
 fn run_case(case: &TestCase) -> Result<(), String> {
     let base = match &case.base {
         Some(base_str) => {
-            let parsed = Url::parse(base_str).map_err(|e| {
-                format!("base URL failed to parse ({e}): {base_str:?}")
-            })?;
+            let parsed = Url::parse(base_str)
+                .map_err(|e| format!("base URL failed to parse ({e}): {base_str:?}"))?;
             Some(parsed)
         }
         None => None,
@@ -150,10 +147,7 @@ fn run_case(case: &TestCase) -> Result<(), String> {
     if case.expects_failure() {
         return match result {
             Err(_) => Ok(()),
-            Ok(url) => Err(format!(
-                "expected parse failure, got href {:?}",
-                url.href()
-            )),
+            Ok(url) => Err(format!("expected parse failure, got href {:?}", url.href())),
         };
     }
 

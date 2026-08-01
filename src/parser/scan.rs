@@ -126,8 +126,7 @@ fn swar_find3(haystack: &[u8], n1: u8, n2: u8, n3: u8) -> Option<usize> {
     let len = haystack.len();
     while i + 8 <= len {
         let word = load_u64_le(haystack, i);
-        let mask =
-            has_zero_byte(word ^ v1) | has_zero_byte(word ^ v2) | has_zero_byte(word ^ v3);
+        let mask = has_zero_byte(word ^ v1) | has_zero_byte(word ^ v2) | has_zero_byte(word ^ v3);
         if mask != 0 {
             return Some(i + first_match_index(mask) as usize);
         }

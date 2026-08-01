@@ -19,10 +19,11 @@ pub(crate) struct SerializationBuf<'a> {
 
 enum State {
     /// Serialization is exactly `source[..len]`.
-    Borrowed { len: usize },
+    Borrowed {
+        len: usize,
+    },
     Owned(String),
 }
-
 
 impl<'a> SerializationBuf<'a> {
     #[inline]

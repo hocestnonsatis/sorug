@@ -268,7 +268,10 @@ mod tests {
 
     #[test]
     fn ascii_passthrough_invalid_punycode() {
-        assert_eq!(to_ascii("a.b.c.xn--pokxncvks").unwrap(), "a.b.c.xn--pokxncvks");
+        assert_eq!(
+            to_ascii("a.b.c.xn--pokxncvks").unwrap(),
+            "a.b.c.xn--pokxncvks"
+        );
         assert_eq!(to_ascii("XN--").unwrap(), "xn--");
     }
 
@@ -286,7 +289,10 @@ mod tests {
     fn mapping_examples() {
         assert_eq!(to_ascii("Ｇｏ.com").unwrap(), "go.com");
         assert_eq!(to_ascii("www.foo。bar.com").unwrap(), "www.foo.bar.com");
-        assert_eq!(to_ascii("GOO\u{200b}\u{2060}\u{feff}goo.com").unwrap(), "googoo.com");
+        assert_eq!(
+            to_ascii("GOO\u{200b}\u{2060}\u{feff}goo.com").unwrap(),
+            "googoo.com"
+        );
         assert_eq!(to_ascii("a\u{ad}b").unwrap(), "ab");
         assert_eq!(to_ascii("loC𝐀𝐋𝐇𝐨𝐬𝐭").unwrap(), "localhost");
     }

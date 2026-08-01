@@ -22,17 +22,17 @@
     clippy::unwrap_used
 )]
 
+pub(crate) mod fast;
 pub(crate) mod host;
 pub(crate) mod percent;
 pub(crate) mod punycode;
 pub(crate) mod scan;
 pub(crate) mod serialization;
-pub(crate) mod fast;
 
 use core::fmt::Write as _;
 use std::str::Chars;
 
-use self::host::{parse_host, parse_opaque_host, Host};
+use self::host::{Host, parse_host, parse_opaque_host};
 use self::percent::{
     append_fragment, append_path_segment, append_query, in_c0_encode_set, in_path_encode_set,
     in_userinfo_encode_set, percent_encode_char, utf8_percent_encode,
@@ -453,8 +453,7 @@ impl<'b, 'i> Parser<'b, 'i> {
                 self.parse_file(input, scheme_type, base_file_url)
             }
             SchemeType::SpecialNotFile => {
-                let (slashes_count, remaining) =
-                    input.count_matching(|c| matches!(c, '/' | '\\'));
+                let (slashes_count, remaining) = input.count_matching(|c| matches!(c, '/' | '\\'));
                 if let Some(base_url) = self.base_url {
                     if slashes_count < 2
                         && base_url.scheme() == &self.serialization.as_str()[..scheme_end as usize]
@@ -842,12 +841,7 @@ impl<'b, 'i> Parser<'b, 'i> {
                 base_url.path_start as usize,
                 remaining,
             ),
-            _ => self.parse_path(
-                scheme_type,
-                &mut true,
-                base_url.path_start as usize,
-                input,
-            ),
+            _ => self.parse_path(scheme_type, &mut true, base_url.path_start as usize, input),
         };
         self.with_query_and_fragment(
             scheme_type,
@@ -928,9 +922,7 @@ impl<'b, 'i> Parser<'b, 'i> {
         if at == 0 {
             input.skip_bytes(1); // consume '@'
             let (c, _) = input.split_first();
-            if matches!(c, Some('/' | '?' | '#'))
-                || (special && c == Some('\\'))
-            {
+            if matches!(c, Some('/' | '?' | '#')) || (special && c == Some('\\')) {
                 return Err(ParseError::Failure);
             }
             return Ok((to_u32(self.serialization.len())?, input, 0));
@@ -1078,7 +1070,9 @@ impl<'b, 'i> Parser<'b, 'i> {
     fn get_file_host(input: Input<'_>) -> Result<(Host<'static>, Input<'_>), ParseError> {
         let (_, host_str, remaining) = Self::file_host(input)?;
         let host = match parse_host(&host_str)? {
-            Host::Domain(d) if d.as_ref() == "localhost" => Host::Domain(std::borrow::Cow::Borrowed("")),
+            Host::Domain(d) if d.as_ref() == "localhost" => {
+                Host::Domain(std::borrow::Cow::Borrowed(""))
+            }
             Host::Domain(d) => Host::Domain(std::borrow::Cow::Owned(d.into_owned())),
             Host::Ipv4(a) => Host::Ipv4(a),
             Host::Ipv6(a) => Host::Ipv6(a),
@@ -1101,7 +1095,9 @@ impl<'b, 'i> Parser<'b, 'i> {
             return Ok((true, true, remaining));
         }
         match parse_host(&host_str)? {
-            Host::Domain(ref d) if d.as_ref() == "localhost" || d.is_empty() => Ok((true, true, remaining)),
+            Host::Domain(ref d) if d.as_ref() == "localhost" || d.is_empty() => {
+                Ok((true, true, remaining))
+            }
             host => {
                 let _ = write!(&mut self.serialization, "{host}");
                 Ok((true, false, remaining))
@@ -1210,9 +1206,7 @@ impl<'b, 'i> Parser<'b, 'i> {
             if !(has_ascii_tab_or_newline(chunk)
                 || (scheme_type.is_file()
                     && self.serialization.len() > path_start
-                    && is_normalized_windows_drive_letter(
-                        &self.serialization[path_start + 1..],
-                    )))
+                    && is_normalized_windows_drive_letter(&self.serialization[path_start + 1..])))
             {
                 // Bulk-append the segment (percent-encode only when needed).
                 let segment_str = &raw[..seg_end];
@@ -1434,8 +1428,7 @@ impl<'b, 'i> Parser<'b, 'i> {
                     utf8_percent_encode(utf8_c, in_c0_encode_set, &mut self.serialization);
                 }
                 None => {
-                    while self.serialization.len() > path_begin
-                        && self.serialization.ends_with(' ')
+                    while self.serialization.len() > path_begin && self.serialization.ends_with(' ')
                     {
                         self.serialization.pop();
                     }
@@ -1621,9 +1614,7 @@ fn last_slash_can_be_removed(serialization: &str, path_start: usize, is_file: bo
         // Only file URLs protect the slash after a Windows drive letter.
         segment_before_start >= path_start
             && !(is_file
-                && path_starts_with_windows_drive_letter(
-                    &serialization[segment_before_start..],
-                ))
+                && path_starts_with_windows_drive_letter(&serialization[segment_before_start..]))
     } else {
         false
     }
@@ -1662,9 +1653,7 @@ fn ensure_path_segment_boundary(
         return;
     }
     // New path-state buffer must not concatenate onto the last segment.
-    if !input.is_empty()
-        && !serialization.ends_with('/')
-        && !matches!(input.peek_char(), Some('/'))
+    if !input.is_empty() && !serialization.ends_with('/') && !matches!(input.peek_char(), Some('/'))
     {
         serialization.push('/');
     }

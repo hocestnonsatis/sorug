@@ -126,28 +126,28 @@ fn try_fast_authority<'a>(
     let mut flags = FLAG_SPECIAL;
     let auth_bytes = &bytes[auth_start..auth_end];
 
-    let (username_end, host_region_start) =
-        if let Some(at) = find_last_at(auth_bytes, auth_rel_end) {
-            if at == 0 {
-                return cold_none();
+    let (username_end, host_region_start) = if let Some(at) = find_last_at(auth_bytes, auth_rel_end)
+    {
+        if at == 0 {
+            return cold_none();
+        }
+        let userinfo = &auth_bytes[..at];
+        if !userinfo_is_clean(userinfo) {
+            return cold_none();
+        }
+        flags |= FLAG_HAS_CREDENTIALS;
+        let username_end = if let Some(ui_colon) = find_byte(userinfo, b':') {
+            if ui_colon + 1 < userinfo.len() {
+                flags |= FLAG_HAS_PASSWORD;
             }
-            let userinfo = &auth_bytes[..at];
-            if !userinfo_is_clean(userinfo) {
-                return cold_none();
-            }
-            flags |= FLAG_HAS_CREDENTIALS;
-            let username_end = if let Some(ui_colon) = find_byte(userinfo, b':') {
-                if ui_colon + 1 < userinfo.len() {
-                    flags |= FLAG_HAS_PASSWORD;
-                }
-                auth_start + ui_colon
-            } else {
-                auth_start + at
-            };
-            (username_end, auth_start + at + 1)
+            auth_start + ui_colon
         } else {
-            (auth_start, auth_start)
+            auth_start + at
         };
+        (username_end, auth_start + at + 1)
+    } else {
+        (auth_start, auth_start)
+    };
 
     if host_region_start >= auth_end {
         return cold_none();
@@ -258,10 +258,7 @@ fn host_ends_in_a_number(host: &[u8]) -> bool {
     }
     // Letters outside `a-f`/`x` cannot appear in decimal/octal/hex IPv4 labels.
     // Note: `x` must be allowed for `0x…` hex forms.
-    if last
-        .iter()
-        .any(|&c| matches!(c, b'g'..=b'w' | b'y'..=b'z'))
-    {
+    if last.iter().any(|&c| matches!(c, b'g'..=b'w' | b'y'..=b'z')) {
         return false;
     }
     if last.iter().all(|&c| c.is_ascii_digit()) {
@@ -272,10 +269,7 @@ fn host_ends_in_a_number(host: &[u8]) -> bool {
 
 /// Single-pass path / query / fragment scan + validation (no double `memchr`).
 #[inline(always)]
-fn scan_path_query_fragment(
-    path_base: usize,
-    bytes: &[u8],
-) -> Option<(Option<u32>, Option<u32>)> {
+fn scan_path_query_fragment(path_base: usize, bytes: &[u8]) -> Option<(Option<u32>, Option<u32>)> {
     let rest = &bytes[path_base..];
     debug_assert_eq!(rest.first(), Some(&b'/'));
 
@@ -375,18 +369,8 @@ fn validate_path_only(path: &[u8]) -> Option<()> {
             i += 1;
         }
         match &path[start..i] {
-            b"."
-            | b".."
-            | b"%2e"
-            | b"%2E"
-            | b"%2e%2e"
-            | b"%2e%2E"
-            | b"%2E%2e"
-            | b"%2E%2E"
-            | b"%2e."
-            | b"%2E."
-            | b".%2e"
-            | b".%2E" => return None,
+            b"." | b".." | b"%2e" | b"%2E" | b"%2e%2e" | b"%2e%2E" | b"%2E%2e" | b"%2E%2E"
+            | b"%2e." | b"%2E." | b".%2e" | b".%2E" => return None,
             _ => {}
         }
     }

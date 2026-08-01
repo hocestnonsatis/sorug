@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use super::percent::{percent_decode, utf8_percent_encode, in_c0_encode_set};
+use super::percent::{in_c0_encode_set, percent_decode, utf8_percent_encode};
 use super::punycode;
 use crate::ParseError;
 

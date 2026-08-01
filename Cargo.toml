@@ -9,8 +9,6 @@ readme = "README.md"
 repository = "https://github.com/hocestnonsatis/sorug"
 homepage = "https://github.com/hocestnonsatis/sorug"
 documentation = "https://docs.rs/sorug"
-# Ready for crates.io when we cut the first release; until then consumers
-# should depend via `git = "https://github.com/hocestnonsatis/sorug"`.
 publish = true
 keywords = ["url", "parser", "whatwg", "simd", "swar"]
 categories = ["parser-implementations", "network-programming"]

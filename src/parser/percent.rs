@@ -128,11 +128,7 @@ pub(crate) fn utf8_percent_encode(
 
 /// Percent-encode a single Unicode code point (UTF-8 form) if any of its bytes
 /// are in the encode set; otherwise push the char as-is when ASCII-safe.
-pub(crate) fn percent_encode_char(
-    c: char,
-    encode: impl Fn(u8) -> bool,
-    out: &mut impl AppendBuf,
-) {
+pub(crate) fn percent_encode_char(c: char, encode: impl Fn(u8) -> bool, out: &mut impl AppendBuf) {
     let mut buf = [0u8; 4];
     let encoded = c.encode_utf8(&mut buf);
     if encoded.bytes().any(|b| encode(b)) {

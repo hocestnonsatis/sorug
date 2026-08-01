@@ -1,11 +1,12 @@
 # sorug
 
-> **Status: Pre-Release / Development — Not published on [crates.io](https://crates.io) yet.**
+> **Status: Early release (`0.1.x`) on [crates.io](https://crates.io/crates/sorug).**
 >
-> APIs may change without a semver guarantee until `1.0`. Install from GitHub until the first crates.io release.
+> APIs may still change before `1.0`. Pin a version and watch release notes.
 
-[![Status](https://img.shields.io/badge/status-pre--release-orange)](https://github.com/hocestnonsatis/sorug)
-[![crates.io](https://img.shields.io/badge/crates.io-not%20yet%20published-lightgrey)](https://github.com/hocestnonsatis/sorug#current-status--roadmap)
+[![CI](https://github.com/hocestnonsatis/sorug/actions/workflows/ci.yml/badge.svg)](https://github.com/hocestnonsatis/sorug/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/sorug.svg)](https://crates.io/crates/sorug)
+[![docs.rs](https://docs.rs/sorug/badge.svg)](https://docs.rs/sorug)
 [![WPT](https://img.shields.io/badge/WPT-891%2F891-brightgreen)](https://github.com/hocestnonsatis/sorug)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success)](https://github.com/hocestnonsatis/sorug/blob/main/CONTRIBUTING.md)
@@ -41,13 +42,15 @@ cargo bench --bench url_benchmark
 
 > Numbers are indicative. Absolute values vary by CPU; relative ordering is what we track.
 
-## Quick start (from Git)
+## Quick start
 
-Until crates.io publication, depend on the GitHub repository:
+```bash
+cargo add sorug
+```
 
 ```toml
 [dependencies]
-sorug = { git = "https://github.com/hocestnonsatis/sorug" }
+sorug = "0.1"
 ```
 
 ```rust
@@ -72,19 +75,25 @@ let joined = Url::parse_with_base("../other", Some(&base))?;
 assert_eq!(joined.as_str(), "https://example.com/other");
 ```
 
+Git dependency (tracking `main`):
+
+```toml
+[dependencies]
+sorug = { git = "https://github.com/hocestnonsatis/sorug" }
+```
+
 ## Current Status & Roadmap
 
 **Today**
 
-- Public GitHub repository for early adopters, review, and contribution.
-- **Not** on crates.io — do **not** `cargo add sorug` from the registry yet.
-- Install via Git dependency (see above).
+- Published on [crates.io](https://crates.io/crates/sorug) as **`0.1.0`** (early release).
 - WPT: **891 / 891**. Core ASCII / file / complex-query paths lead ada-url; IDNA is near-parity.
+- Docs: [docs.rs/sorug](https://docs.rs/sorug).
 
-**Coming soon**
+**Next**
 
-- First crates.io release (`0.1.x`) with documented stability expectations.
-- Expanded docs.rs API documentation and examples.
+- Stabilize public API toward `1.0`.
+- Expanded examples and docs.
 - Continued differential testing against rust-url / ada where intentional divergences are documented.
 - Optional `no_std` (+ `alloc`) exploration without sacrificing the zero-copy fast path.
 

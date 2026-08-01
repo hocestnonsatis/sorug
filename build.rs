@@ -12,8 +12,7 @@
 use std::path::Path;
 use std::process::Command;
 
-const WPT_URL: &str =
-    "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/urltestdata.json";
+const WPT_URL: &str = "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/urltestdata.json";
 const WPT_PATH: &str = "tests/urltestdata.json";
 
 fn main() {
