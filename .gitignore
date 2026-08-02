@@ -1,2 +1,74 @@
+# =============================================================================
+# Rust / crate build
+# =============================================================================
 /target
 memories.md
+
+# =============================================================================
+# cargo-fuzz — generated artifacts (do NOT ignore sources under fuzz/)
+#
+# Keep tracked:
+#   fuzz/Cargo.toml, fuzz/Cargo.lock (optional), fuzz/fuzz_targets/,
+#   fuzz/seed_corpus/, fuzz/url_dict.txt, fuzz/.gitignore
+#
+# Ignore everything libFuzzer / cargo-fuzz / local runners write at scale
+# (this tree alone can exceed 1–2 GiB and slows IDE indexing).
+# =============================================================================
+
+# --- cargo-fuzz standard directories (also listed in fuzz/.gitignore) ---------
+fuzz/artifacts/
+fuzz/corpus/
+fuzz/target/
+fuzz/build/
+
+# Coverage / sanitizer extras some cargo-fuzz workflows emit
+fuzz/coverage/
+fuzz/afl/
+fuzz/honggfuzz/
+
+# Local campaign logs, PID files, triage helpers (scripts/run_fuzz_24h.sh → fuzz/logs/)
+fuzz/logs/
+
+# --- libFuzzer finding filenames (any cwd; usually under fuzz/artifacts/) -----
+# Patterns match both bare files and nested archive_* copies.
+crash-*
+leak-*
+timeout-*
+oom-*
+**/crash-*
+**/leak-*
+**/timeout-*
+**/oom-*
+
+# --- Runner / worker stdout spilled at repo root (jobs → fuzz-0.log …) --------
+fuzz*.log
+fuzz-*.log
+
+# --- Core dumps & sanitizer leftovers ----------------------------------------
+core
+core.*
+vgcore.*
+*.stackdump
+default.profraw
+default.profdata
+*.profraw
+*.profdata
+lsan.supp
+asan.log*
+ubsan.log*
+tsan.log*
+
+# --- Ephemeral local fuzz helpers (never commit ad-hoc runners) --------------
+# Keep `scripts/run_fuzz_24h.sh`; ignore one-off copies dropped in-repo.
+/run_fuzz*.sh
+/fuzz_runner*.sh
+/start_triage*.sh
+fuzz/**/*.pid
+fuzz/**/campaign.pid
+fuzz/**/triage_loop.pid
+
+# Optional: local scratch dirs for minimized crashes / repro packs
+fuzz/minimized/
+fuzz/repro/
+fuzz/tmp/
+fuzz/.tmp/

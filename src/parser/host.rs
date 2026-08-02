@@ -1,7 +1,7 @@
 //! Host parsing: domain (IDNA), opaque host, IPv4, IPv6.
 
 use std::borrow::Cow;
-use std::fmt;
+use std::fmt::{self, Write};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use super::percent::{in_c0_encode_set, percent_decode, utf8_percent_encode};
@@ -27,6 +27,15 @@ impl fmt::Display for Host<'_> {
             }
         }
     }
+}
+
+/// Result of appending a special host directly into the serialization buffer.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum AppendedHost {
+    EmptyDomain,
+    Domain,
+    Ipv4,
+    Ipv6,
 }
 
 /// Parse a special-URL host (domain / IPv4 / IPv6).
@@ -55,8 +64,33 @@ pub(crate) fn parse_host(input: &str) -> Result<Host<'_>, ParseError> {
     }
 }
 
+/// Parse a special host and append its href form to `out` (no intermediate ACE `String`
+/// for the domain path — ACE is written once into the URL buffer).
+pub(crate) fn append_host(
+    input: &str,
+    out: &mut super::serialization::SerializationBuf<'_>,
+) -> Result<AppendedHost, ParseError> {
+    if let Some(inner) = input.strip_prefix('[') {
+        let Some(ipv6) = inner.strip_suffix(']') else {
+            return Err(ParseError::Failure);
+        };
+        let addr = parse_ipv6(ipv6)?;
+        out.push('[');
+        write_ipv6_to(out, &addr).map_err(|_| ParseError::Failure)?;
+        out.push(']');
+        return Ok(AppendedHost::Ipv6);
+    }
+
+    let decoded_cow = percent_decode(input.as_bytes());
+    let decoded = match &decoded_cow {
+        Cow::Borrowed(bytes) => std::str::from_utf8(bytes).map_err(|_| ParseError::Failure)?,
+        Cow::Owned(bytes) => std::str::from_utf8(bytes).map_err(|_| ParseError::Failure)?,
+    };
+    append_domain_or_ipv4(decoded, out)
+}
+
 fn domain_or_ipv4(decoded: &str) -> Result<Host<'_>, ParseError> {
-    let ascii = punycode::to_ascii(decoded).map_err(|_| ParseError::Failure)?;
+    let ascii = punycode::to_ascii(decoded).map_err(|()| ParseError::Failure)?;
     if ascii.is_empty() {
         return Err(ParseError::Failure);
     }
@@ -67,21 +101,105 @@ fn domain_or_ipv4(decoded: &str) -> Result<Host<'_>, ParseError> {
     }
 }
 
+fn append_domain_or_ipv4(
+    decoded: &str,
+    out: &mut super::serialization::SerializationBuf<'_>,
+) -> Result<AppendedHost, ParseError> {
+    let start = out.len();
+    punycode::to_ascii_append_validated(decoded, out).map_err(|()| ParseError::Failure)?;
+    let ascii = &out.as_str()[start..];
+    if ascii.is_empty() {
+        out.truncate(start);
+        return Err(ParseError::Failure);
+    }
+    if ends_in_a_number(ascii) {
+        let ip = parse_ipv4(ascii)?;
+        out.truncate(start);
+        write_ipv4_to(out, ip);
+        Ok(AppendedHost::Ipv4)
+    } else {
+        Ok(AppendedHost::Domain)
+    }
+}
+
+fn write_ipv4_to(out: &mut super::serialization::SerializationBuf<'_>, ip: Ipv4Addr) {
+    let octets = ip.octets();
+    let mut first = true;
+    for o in octets {
+        if !first {
+            out.push('.');
+        }
+        first = false;
+        // Tiny itoa for 0..=255.
+        if o >= 100 {
+            out.push(char::from(b'0' + o / 100));
+            out.push(char::from(b'0' + (o / 10) % 10));
+            out.push(char::from(b'0' + o % 10));
+        } else if o >= 10 {
+            out.push(char::from(b'0' + o / 10));
+            out.push(char::from(b'0' + o % 10));
+        } else {
+            out.push(char::from(b'0' + o));
+        }
+    }
+}
+
+fn write_ipv6_to(
+    out: &mut super::serialization::SerializationBuf<'_>,
+    addr: &Ipv6Addr,
+) -> Result<(), fmt::Error> {
+    let segments = addr.segments();
+    let (compress_start, compress_end) = longest_zero_sequence(&segments);
+    let mut i = 0isize;
+    while i < 8 {
+        if i == compress_start {
+            out.push(':');
+            if i == 0 {
+                out.push(':');
+            }
+            if compress_end < 8 {
+                i = compress_end;
+            } else {
+                break;
+            }
+        }
+        let _ = write!(out, "{:x}", segments[i as usize]);
+        if i < 7 {
+            out.push(':');
+        }
+        i += 1;
+    }
+    Ok(())
+}
+
 /// Parse a non-special (opaque) host.
 pub(crate) fn parse_opaque_host(input: &str) -> Result<Host<'static>, ParseError> {
-    if let Some(inner) = input.strip_prefix('[') {
+    // WHATWG host state ignores ASCII tab/LF/CR before other processing.
+    let cleaned: Cow<'_, str> = if input.bytes().any(|b| matches!(b, b'\t' | b'\n' | b'\r')) {
+        Cow::Owned(
+            input
+                .bytes()
+                .filter(|&b| !matches!(b, b'\t' | b'\n' | b'\r'))
+                .map(char::from)
+                .collect(),
+        )
+    } else {
+        Cow::Borrowed(input)
+    };
+
+    if let Some(inner) = cleaned.strip_prefix('[') {
         let Some(ipv6) = inner.strip_suffix(']') else {
             return Err(ParseError::Failure);
         };
         return parse_ipv6(ipv6).map(Host::Ipv6);
     }
 
-    if input.bytes().any(|c| is_forbidden_host_code_point(c)) {
+    if cleaned.bytes().any(|c| is_forbidden_host_code_point(c)) {
         return Err(ParseError::Failure);
     }
 
     let mut out = String::new();
-    utf8_percent_encode(input, in_c0_encode_set, &mut out);
+    utf8_percent_encode(&cleaned, in_c0_encode_set, &mut out);
     Ok(Host::Domain(Cow::Owned(out)))
 }
 
@@ -397,5 +515,15 @@ pub(crate) fn host_to_cow<'a>(host: &'a Host<'_>) -> Cow<'a, str> {
     match host {
         Host::Domain(d) => Cow::Borrowed(d.as_ref()),
         other => Cow::Owned(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod opaque_ws {
+    use super::*;
+    #[test]
+    fn ipv6_with_newlines() {
+        let h = parse_opaque_host("\n\n[2001:db8::1]\n\n").unwrap();
+        assert!(matches!(h, Host::Ipv6(_)));
     }
 }

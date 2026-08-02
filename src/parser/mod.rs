@@ -28,11 +28,12 @@ pub(crate) mod percent;
 pub(crate) mod punycode;
 pub(crate) mod scan;
 pub(crate) mod serialization;
+pub(crate) mod unicode_ranges;
 
 use core::fmt::Write as _;
 use std::str::Chars;
 
-use self::host::{Host, parse_host, parse_opaque_host};
+use self::host::{AppendedHost, Host, append_host, parse_host, parse_opaque_host};
 use self::percent::{
     append_fragment, append_path_segment, append_query, in_c0_encode_set, in_path_encode_set,
     in_userinfo_encode_set, percent_encode_char, utf8_percent_encode,
@@ -919,17 +920,23 @@ impl<'b, 'i> Parser<'b, 'i> {
         };
 
         // Empty credentials (`@host`) — no username/password written.
-        if at == 0 {
-            input.skip_bytes(1); // consume '@'
+        // Tabs/LF/CR before `@` count as empty too (`\t@host`).
+        let userinfo_prefix = &input.as_str()[..at];
+        let userinfo_empty = userinfo_prefix
+            .bytes()
+            .all(|b| matches!(b, b'\t' | b'\n' | b'\r'));
+        if at == 0 || userinfo_empty {
+            input.skip_bytes(at + 1); // consume optional ws + '@'
             let (c, _) = input.split_first();
-            if matches!(c, Some('/' | '?' | '#')) || (special && c == Some('\\')) {
+            if matches!(c, Some('/' | '?' | '#')) || (special && c == Some('\\')) || c.is_none()
+            {
                 return Err(ParseError::Failure);
             }
             return Ok((to_u32(self.serialization.len())?, input, 0));
         }
 
         // Encode userinfo bytes before `@`, skipping ASCII tab/LF/CR.
-        let userinfo = &input.as_str()[..at];
+        let userinfo = userinfo_prefix;
         let mut username_end = None;
         let mut has_password = false;
         let mut has_username = false;
@@ -986,8 +993,8 @@ impl<'b, 'i> Parser<'b, 'i> {
         scheme_end: u32,
         scheme_type: SchemeType,
     ) -> Result<(u32, HostKind, Option<u16>, Input<'s>, bool), ParseError> {
-        let (host, remaining) = Self::parse_host_input(input, scheme_type)?;
-        let empty_host = matches!(&host, Host::Domain(d) if d.is_empty());
+        let (appended, remaining) = self.parse_host_input_append(input, scheme_type)?;
+        let empty_host = matches!(appended, AppendedHost::EmptyDomain);
         if empty_host {
             if remaining.starts_with_char(':') {
                 return Err(ParseError::Failure);
@@ -995,11 +1002,9 @@ impl<'b, 'i> Parser<'b, 'i> {
             if scheme_type.is_special() {
                 return Err(ParseError::Failure);
             }
-        } else {
-            let _ = write!(&mut self.serialization, "{host}");
         }
         let host_end = to_u32(self.serialization.len())?;
-        let host_kind = HostKind::from(&host);
+        let host_kind = HostKind::from(appended);
 
         let (port, remaining) = if let Some(remaining) = remaining.split_prefix_char(':') {
             let scheme = &self.serialization.as_str()[..scheme_end as usize];
@@ -1017,39 +1022,37 @@ impl<'b, 'i> Parser<'b, 'i> {
         Ok((host_end, host_kind, port, remaining, empty_host))
     }
 
-    fn parse_host_input<'h>(
+    /// Parse host from `input` and append its serialization form (special hosts
+    /// write ACE/IPv4/IPv6 once; opaque hosts still go through [`Host`] Display).
+    fn parse_host_input_append<'h>(
+        &mut self,
         mut input: Input<'h>,
         scheme_type: SchemeType,
-    ) -> Result<(Host<'h>, Input<'h>), ParseError> {
-        if scheme_type.is_file() {
-            return Self::get_file_host(input);
-        }
+    ) -> Result<(AppendedHost, Input<'h>), ParseError> {
+        debug_assert!(!scheme_type.is_file());
         let input_str = input.as_str();
         let bytes = input_str.as_bytes();
         let (byte_end, has_ignored) = find_host_end(bytes, scheme_type.is_special());
 
         if has_ignored {
             // Slow path: rebuild host without tab/LF/CR (may include non-ASCII).
-            let mut out = String::with_capacity(byte_end);
+            let mut rebuilt = String::with_capacity(byte_end);
             for c in input_str[..byte_end].chars() {
                 if !is_ascii_tab_or_newline(c) {
-                    out.push(c);
+                    rebuilt.push(c);
                 }
             }
             input.skip_bytes(byte_end);
-            if scheme_type == SchemeType::SpecialNotFile && out.is_empty() {
+            if scheme_type == SchemeType::SpecialNotFile && rebuilt.is_empty() {
                 return Err(ParseError::Failure);
             }
             if !scheme_type.is_special() {
-                let host = parse_opaque_host(&out)?;
-                return Ok((host, input));
+                return self.append_opaque_host(&rebuilt).map(|h| (h, input));
             }
-            let host = match parse_host(&out)? {
-                Host::Domain(d) => Host::Domain(std::borrow::Cow::Owned(d.into_owned())),
-                Host::Ipv4(a) => Host::Ipv4(a),
-                Host::Ipv6(a) => Host::Ipv6(a),
-            };
-            return Ok((host, input));
+            if rebuilt.is_empty() {
+                return Ok((AppendedHost::EmptyDomain, input));
+            }
+            return append_host(&rebuilt, &mut self.serialization).map(|h| (h, input));
         }
 
         let host_str = &input_str[..byte_end];
@@ -1059,25 +1062,31 @@ impl<'b, 'i> Parser<'b, 'i> {
             return Err(ParseError::Failure);
         }
         if !scheme_type.is_special() {
-            // Opaque host may percent-encode → always owned.
-            let host = parse_opaque_host(host_str)?;
-            return Ok((host, input));
+            return self.append_opaque_host(host_str).map(|h| (h, input));
         }
-        let host = parse_host(host_str)?;
-        Ok((host, input))
+        if host_str.is_empty() {
+            return Ok((AppendedHost::EmptyDomain, input));
+        }
+        append_host(host_str, &mut self.serialization).map(|h| (h, input))
     }
 
-    fn get_file_host(input: Input<'_>) -> Result<(Host<'static>, Input<'_>), ParseError> {
-        let (_, host_str, remaining) = Self::file_host(input)?;
-        let host = match parse_host(&host_str)? {
-            Host::Domain(d) if d.as_ref() == "localhost" => {
-                Host::Domain(std::borrow::Cow::Borrowed(""))
+    fn append_opaque_host(&mut self, host_str: &str) -> Result<AppendedHost, ParseError> {
+        let host = parse_opaque_host(host_str)?;
+        match &host {
+            Host::Domain(d) if d.is_empty() => Ok(AppendedHost::EmptyDomain),
+            Host::Domain(d) => {
+                self.serialization.push_str(d.as_ref());
+                Ok(AppendedHost::Domain)
             }
-            Host::Domain(d) => Host::Domain(std::borrow::Cow::Owned(d.into_owned())),
-            Host::Ipv4(a) => Host::Ipv4(a),
-            Host::Ipv6(a) => Host::Ipv6(a),
-        };
-        Ok((host, remaining))
+            Host::Ipv4(ip) => {
+                let _ = write!(&mut self.serialization, "{ip}");
+                Ok(AppendedHost::Ipv4)
+            }
+            Host::Ipv6(_) => {
+                let _ = write!(&mut self.serialization, "{host}");
+                Ok(AppendedHost::Ipv6)
+            }
+        }
     }
 
     /// Returns `(use_path_start, host_is_empty, remaining)`.
@@ -1193,7 +1202,7 @@ impl<'b, 'i> Parser<'b, 'i> {
     ) -> Input<'s> {
         let special = scheme_type.is_special();
         loop {
-            let mut segment_start = self.serialization.len();
+            let segment_start = self.serialization.len();
             let mut ends_with_slash = false;
 
             // SIMD fast path: no tab/LF/CR in the upcoming segment → bulk copy.
@@ -1255,15 +1264,10 @@ impl<'b, 'i> Parser<'b, 'i> {
                             break;
                         }
                         _ => {
-                            if scheme_type.is_file()
-                                && self.serialization.len() > path_start
-                                && is_normalized_windows_drive_letter(
-                                    &self.serialization[path_start + 1..],
-                                )
-                            {
-                                self.serialization.push('/');
-                                segment_start += 1;
-                            }
+                            // Do not inject `/` after a Windows drive letter. WHATWG /
+                            // Chrome keep `file:///p:foo` and `file:///p:./x` without an
+                            // extra slash (injecting one left a stale `/./` when tabs
+                            // delayed the `.` segment recognition).
                             percent_encode_char(c, in_path_encode_set, &mut self.serialization);
                         }
                     }
@@ -1684,6 +1688,16 @@ impl From<&Host<'_>> for HostKind {
     }
 }
 
+impl From<AppendedHost> for HostKind {
+    fn from(h: AppendedHost) -> Self {
+        match h {
+            AppendedHost::EmptyDomain | AppendedHost::Domain => Self::Domain,
+            AppendedHost::Ipv4 => Self::Ipv4,
+            AppendedHost::Ipv6 => Self::Ipv6,
+        }
+    }
+}
+
 fn host_flags_from_kind(kind: HostKind) -> u8 {
     match kind {
         HostKind::Domain => 0,
@@ -1845,5 +1859,53 @@ mod tests {
         let base = parse("abc://x/y/z/C:/", None).unwrap();
         let url = parse("..", Some(&base)).unwrap();
         assert_eq!(url.serialization.as_str(), "abc://x/y/z/");
+    }
+}
+
+#[cfg(test)]
+mod fuzz_regressions {
+    use super::*;
+    #[test]
+    fn opaque_ipv6_leading_newlines() {
+        let url = parse("fihttp://\n\n[2001:db8::1]\n\n", None).unwrap();
+        assert_eq!(url.serialization.as_str(), "fihttp://[2001:db8::1]");
+    }
+}
+
+#[cfg(test)]
+mod triage_tick2 {
+    use super::*;
+    #[test]
+    fn at_then_nonascii_host() {
+        let url = parse("https://@\u{624}0", None).unwrap();
+        assert_eq!(url.serialization.as_str(), "https://xn--0-smc/");
+    }
+    #[test]
+    fn scheme_with_tab() {
+        let url = parse("w\ts://example.com/", None).unwrap();
+        assert_eq!(url.serialization.as_str(), "ws://example.com/");
+    }
+    #[test]
+    fn file_dot_roundtrip() {
+        let input = "file:/p:\n\n\n./%2e0/";
+        let url = parse(input, None).unwrap();
+        assert_eq!(url.serialization.as_str(), "file:///p:./%2e0/");
+        let href = url.serialization.as_str().to_owned();
+        let again = parse(&href, None).unwrap();
+        assert_eq!(again.serialization.as_str(), href);
+    }
+    #[test]
+    fn ws_arabic_path() {
+        let url = parse("w\ts:/\u{688}0/\u{688}0.0.0.0~/../)C", None).unwrap();
+        assert_eq!(url.serialization.as_str(), "ws://xn--0-isc/)C");
+    }
+    #[test]
+    fn https_backslash_host() {
+        let url = parse("https:///\\\\\\\u{7e3}2\\\\\\\\\\\u{0}\\]\\", None).unwrap();
+        assert!(url.serialization.as_str().starts_with("https://xn--2-cdd"));
+    }
+    #[test]
+    fn superscript_ipv4_rejected() {
+        assert!(parse("http:255.255.255.2\u{2075}85", None).is_err());
     }
 }

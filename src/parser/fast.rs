@@ -137,9 +137,12 @@ fn try_fast_authority<'a>(
         }
         flags |= FLAG_HAS_CREDENTIALS;
         let username_end = if let Some(ui_colon) = find_byte(userinfo, b':') {
-            if ui_colon + 1 < userinfo.len() {
-                flags |= FLAG_HAS_PASSWORD;
+            // Empty password → href omits the trailing ':'; extra ':' in the
+            // password must be percent-encoded. Both require owned serialization.
+            if ui_colon + 1 >= userinfo.len() || userinfo[ui_colon + 1..].contains(&b':') {
+                return cold_none();
             }
+            flags |= FLAG_HAS_PASSWORD;
             auth_start + ui_colon
         } else {
             auth_start + at
@@ -162,6 +165,11 @@ fn try_fast_authority<'a>(
             }
             let port = parse_u16_digits(port_bytes)?;
             if port == default_port {
+                return cold_none();
+            }
+            // Href must use the decimal form without leading zeros. Bail to the
+            // slow path so serialization is rewritten via itoa.
+            if port_bytes.len() > 1 && port_bytes[0] == b'0' {
                 return cold_none();
             }
             (pcolon, Some(port))

@@ -29,10 +29,10 @@ Criterion, Linux, release profile (`lto = true`, `codegen-units = 1`). Lower is 
 
 | Workload | **sorug** | ada-url | servo/`url` |
 | --- | ---: | ---: | ---: |
-| Fast Path ASCII (`https://example.com/api/v1/users`) | **29.8 ns** | 30.5 ns | 96.9 ns |
-| Complex Query / Fragment | **53.7 ns** | 127.9 ns | 199 ns |
-| IDNA / Punycode | 263 ns | 252 ns | **251 ns** |
-| File Edge Case | **30.7 ns** | ~91 ns | 132 ns |
+| Fast Path ASCII (`https://example.com/api/v1/users`) | **30.9 ns** | 31.5 ns | 97.6 ns |
+| Complex Query / Fragment | **53.1 ns** | 141 ns | 193 ns |
+| IDNA / Punycode | **171 ns** | 239 ns | 243 ns |
+| File Edge Case | **30.8 ns** | 91.6 ns | 129 ns |
 
 Reproduce locally:
 
@@ -86,8 +86,8 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 **Today**
 
-- Published on [crates.io](https://crates.io/crates/sorug) as **`0.1.0`** (early release).
-- WPT: **891 / 891**. Core ASCII / file / complex-query paths lead ada-url; IDNA is near-parity.
+- Published on [crates.io](https://crates.io/crates/sorug) as **`0.1.1`** (early release).
+- WPT: **891 / 891**. Core ASCII / file / complex-query / IDNA paths lead ada-url.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug).
 
 **Next**

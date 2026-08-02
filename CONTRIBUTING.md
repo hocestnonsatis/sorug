@@ -62,7 +62,7 @@ Guidelines:
 
 - Prefer reporting **relative** change on the same machine over absolute nanoseconds in PR descriptions.
 - Do not regress Fast Path ASCII, Complex Query, or File Edge Case without a strong correctness rationale.
-- IDNA is near-parity with peers; large swings deserve investigation.
+- IDNA leads peers after the in-tree Punycode / direct-append path; large swings deserve investigation.
 
 ## Coding standards
 

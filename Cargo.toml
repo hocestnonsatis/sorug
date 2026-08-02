@@ -1,6 +1,6 @@
 [package]
 name = "sorug"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Ultra-high-performance, zero-copy, WHATWG-compliant URL parser"
@@ -12,11 +12,20 @@ documentation = "https://docs.rs/sorug"
 publish = true
 keywords = ["url", "parser", "whatwg", "simd", "swar"]
 categories = ["parser-implementations", "network-programming"]
-exclude = ["memories.md", "target/"]
+exclude = [
+    "memories.md",
+    "target/",
+    "fuzz/corpus/",
+    "fuzz/artifacts/",
+    "fuzz/logs/",
+    "fuzz/target/",
+]
 
 [dependencies]
 # SIMD-accelerated single/multi-byte delimiter scanning (`:`, `/`, `?`, `#`, …)
 memchr = { version = "2.7", default-features = false, features = ["std"] }
+# UTS #46 requires NFC before Punycode (e.g. t + combining cedilla → ţ).
+unicode-normalization = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

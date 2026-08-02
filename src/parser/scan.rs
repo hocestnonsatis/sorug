@@ -69,6 +69,10 @@ fn swar_find(haystack: &[u8], needle: u8) -> Option<usize> {
 }
 
 /// SWAR: last index of `needle` in `haystack[0..end]`.
+///
+/// Candidates from [`has_zero_byte`] are verified: a true zero-byte match can
+/// borrow into later `0x01` lanes (e.g. `'A' ^ '@'`), producing false positives
+/// at higher indices. Always confirm `haystack[idx] == needle`.
 #[inline(always)]
 fn swar_rfind(haystack: &[u8], end: usize, needle: u8) -> Option<usize> {
     let end = end.min(haystack.len());
@@ -77,9 +81,14 @@ fn swar_rfind(haystack: &[u8], end: usize, needle: u8) -> Option<usize> {
     while i >= 8 {
         i -= 8;
         let word = load_u64_le(haystack, i);
-        let mask = has_zero_byte(word ^ n);
-        if let Some(lane) = last_match_index(mask) {
-            return Some(i + lane as usize);
+        let mut mask = has_zero_byte(word ^ n);
+        while let Some(lane) = last_match_index(mask) {
+            let idx = i + lane as usize;
+            if idx < end && haystack[idx] == needle {
+                return Some(idx);
+            }
+            // Clear this lane's high bit; keep scanning earlier lanes.
+            mask &= !(0x80u64 << (lane * 8));
         }
     }
     while i > 0 {
@@ -240,8 +249,16 @@ pub(crate) fn find_last_at(haystack: &[u8], end: usize) -> Option<usize> {
 /// delimiter, the caller should use the slow char-wise path.
 #[inline]
 pub(crate) fn find_host_end(haystack: &[u8], special: bool) -> (usize, bool) {
-    if haystack.first() == Some(&b'[') {
-        return find_host_end_bracketed(haystack, special);
+    // Leading tab/LF/CR are ignored; IPv6 still starts with `[` after them.
+    let mut start = 0;
+    let mut leading_ignored = false;
+    while start < haystack.len() && matches!(haystack[start], b'\t' | b'\n' | b'\r') {
+        leading_ignored = true;
+        start += 1;
+    }
+    if haystack.get(start) == Some(&b'[') {
+        let (end, ignored) = find_host_end_bracketed(&haystack[start..], special);
+        return (start + end, leading_ignored || ignored);
     }
 
     let delim = if special {
@@ -257,7 +274,7 @@ pub(crate) fn find_host_end(haystack: &[u8], special: bool) -> (usize, bool) {
         find4(b':', b'/', b'?', b'#', haystack)
     };
     let end = delim.unwrap_or(haystack.len());
-    let ignored = find3(b'\t', b'\n', b'\r', &haystack[..end]).is_some();
+    let ignored = leading_ignored || find3(b'\t', b'\n', b'\r', &haystack[..end]).is_some();
     (end, ignored)
 }
 
@@ -322,4 +339,34 @@ pub(crate) fn find_file_host_end(haystack: &[u8]) -> (usize, bool) {
 #[inline]
 pub(crate) fn find_first_encode(bytes: &[u8], needs_encode: impl Fn(u8) -> bool) -> Option<usize> {
     bytes.iter().position(|&b| needs_encode(b))
+}
+
+#[cfg(test)]
+mod swar_at_tests {
+    use super::*;
+
+    #[test]
+    fn last_at_before_capital_a() {
+        let s = b"r:pass@Api.example.com/";
+        let end = find_authority_end(s, true);
+        let at = find_last_at(s, end);
+        assert_eq!(end, 22);
+        assert_eq!(at, Some(6), "slice={:?}", std::str::from_utf8(&s[..end]));
+    }
+
+    #[test]
+    fn swar_rfind_a_vs_at() {
+        assert_eq!(swar_rfind(b"AAAAAAAA", 8, b'@'), None);
+        assert_eq!(swar_rfind(b"AAA@AAAA", 8, b'@'), Some(3));
+        assert_eq!(swar_rfind(b"r:pass@A", 8, b'@'), Some(6));
+        assert_eq!(swar_rfind(b"pass@Api", 8, b'@'), Some(4));
+        // Borrow false-positives must not win over an earlier real '@'.
+        assert_eq!(swar_rfind(b"x@ABCDEF", 8, b'@'), Some(1));
+    }
+
+    #[test]
+    fn credentials_before_capital_a_host() {
+        let url = crate::Url::parse("https://r:pass@Api.example.com/").unwrap();
+        assert_eq!(url.href(), "https://r:pass@api.example.com/");
+    }
 }

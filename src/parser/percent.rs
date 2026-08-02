@@ -52,6 +52,11 @@ pub(crate) fn in_special_query_encode_set(c: u8) -> bool {
 }
 
 /// https://url.spec.whatwg.org/#path-percent-encode-set
+///
+/// Historically (and in WPT / current WHATWG path set practice used by this
+/// crate) the path set also percent-encodes `^`, `` ` ``, `{`, and `}`.
+/// Note: rust-url 2.5 often leaves these literal in paths — the fuzz harness
+/// allowlists that oracle deviation.
 #[inline]
 pub(crate) fn in_path_encode_set(c: u8) -> bool {
     in_query_encode_set(c) || matches!(c, b'?' | b'^' | b'`' | b'{' | b'}')
