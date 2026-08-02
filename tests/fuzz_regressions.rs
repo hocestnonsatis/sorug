@@ -14,7 +14,7 @@
 //!
 //! Every case also asserts: no panic, getter invariants, and href round-trip.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use sorug::Url;
 
@@ -64,10 +64,7 @@ fn assert_invariants(url: &Url<'_>) {
 fn assert_round_trip(url: &Url<'_>) {
     let href = url.href().to_owned();
     let again = Url::parse(&href).unwrap_or_else(|e| {
-        panic!(
-            "href re-parse failed for {}: {e:?}",
-            href.escape_default()
-        );
+        panic!("href re-parse failed for {}: {e:?}", href.escape_default());
     });
     assert_eq!(again.href(), href, "href round-trip changed");
     assert_invariants(&again);
@@ -147,32 +144,57 @@ fn run_bulk(inputs: &[&str]) {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // IDNA CheckBidi / CheckJoiners / bidi controls
 // ---------------------------------------------------------------------------
 
 const CHECK_BIDI_CASES: &[NamedCase] = &[
     // RTL label may end with EN digit
-    NamedCase { name: "rtl_label_ends_with_en_digit", input: "http://\u{624}0.com/" },
+    NamedCase {
+        name: "rtl_label_ends_with_en_digit",
+        input: "http://\u{624}0.com/",
+    },
     // Arabic NSM must not count as RTL letter
-    NamedCase { name: "arabic_nsm_alone_not_rtl", input: "http://\u{613}.com/" },
+    NamedCase {
+        name: "arabic_nsm_alone_not_rtl",
+        input: "http://\u{613}.com/",
+    },
     // ZWNJ fails CheckJoiners outside ContextJ
-    NamedCase { name: "check_joiners_zwnj_arabic", input: "http://\u{639}\u{631}\u{628}\u{64a}\u{200c}.com/" },
+    NamedCase {
+        name: "check_joiners_zwnj_arabic",
+        input: "http://\u{639}\u{631}\u{628}\u{64a}\u{200c}.com/",
+    },
     // CheckBidi rejects RTL+LTR letter mix
-    NamedCase { name: "check_bidi_rtl_ltr_mix_hebrew", input: "http://\u{5e2}\u{5d1}\u{5e8}\u{5d9}\u{5ea}abc.com/" },
+    NamedCase {
+        name: "check_bidi_rtl_ltr_mix_hebrew",
+        input: "http://\u{5e2}\u{5d1}\u{5e8}\u{5d9}\u{5ea}abc.com/",
+    },
     // CheckBidi rejects LTR+RTL letter mix
-    NamedCase { name: "check_bidi_ltr_rtl_mix_arabic", input: "http://abc\u{639}\u{631}\u{628}\u{64a}.com/" },
+    NamedCase {
+        name: "check_bidi_ltr_rtl_mix_arabic",
+        input: "http://abc\u{639}\u{631}\u{628}\u{64a}.com/",
+    },
     // Bidi embedding controls disallowed in hosts
-    NamedCase { name: "bidi_embedding_control", input: "http://\u{202a}.com/" },
+    NamedCase {
+        name: "bidi_embedding_control",
+        input: "http://\u{202a}.com/",
+    },
     // Bidi isolates U+2066..=2069 rejected (Node)
-    NamedCase { name: "bidi_isolate_control", input: "http://\u{2066}.com/" },
+    NamedCase {
+        name: "bidi_isolate_control",
+        input: "http://\u{2066}.com/",
+    },
     // Leading combining/NSM rejected
-    NamedCase { name: "leading_nsm_with_rtl", input: "http://\u{613}\u{627}.com/" },
+    NamedCase {
+        name: "leading_nsm_with_rtl",
+        input: "http://\u{613}\u{627}.com/",
+    },
     // RTL + trailing NSM accepted (NSM skipped)
-    NamedCase { name: "rtl_with_trailing_nsm", input: "http://\u{627}\u{613}.com/" },
+    NamedCase {
+        name: "rtl_with_trailing_nsm",
+        input: "http://\u{627}\u{613}.com/",
+    },
 ];
-
 
 // ---------------------------------------------------------------------------
 // IDNA UTS #46 mapping / disallowed code points
@@ -180,23 +202,46 @@ const CHECK_BIDI_CASES: &[NamedCase] = &[
 
 const IDNA_MAPPING_CASES: &[NamedCase] = &[
     // Letterlike U+210B → h via UTS #46/NFKC
-    NamedCase { name: "letterlike_nfkc_script_h", input: "http://\u{210b}ost.com/" },
+    NamedCase {
+        name: "letterlike_nfkc_script_h",
+        input: "http://\u{210b}ost.com/",
+    },
     // Vulgar fraction NFKC
-    NamedCase { name: "vulgar_fraction_nfkc", input: "http://\u{bc}.com/" },
+    NamedCase {
+        name: "vulgar_fraction_nfkc",
+        input: "http://\u{bc}.com/",
+    },
     // Leading combining mark rejected
-    NamedCase { name: "leading_combining_mark", input: "http://\u{301}.com/" },
+    NamedCase {
+        name: "leading_combining_mark",
+        input: "http://\u{301}.com/",
+    },
     // Hebrew unassigned U+05CC disallowed
-    NamedCase { name: "hebrew_unassigned_05cc", input: "http://\u{5cc}.com/" },
+    NamedCase {
+        name: "hebrew_unassigned_05cc",
+        input: "http://\u{5cc}.com/",
+    },
     // U+FF61 → . label separator
-    NamedCase { name: "halfwidth_ideographic_full_stop", input: "http://\u{ff61}a.com/" },
+    NamedCase {
+        name: "halfwidth_ideographic_full_stop",
+        input: "http://\u{ff61}a.com/",
+    },
     // U+2000..=200A map to space → forbidden host
-    NamedCase { name: "en_quad_maps_to_space", input: "http://\u{2000}.com/" },
+    NamedCase {
+        name: "en_quad_maps_to_space",
+        input: "http://\u{2000}.com/",
+    },
     // U+203E → space → forbidden host
-    NamedCase { name: "overline_maps_to_space", input: "http://\u{203e}.com/" },
+    NamedCase {
+        name: "overline_maps_to_space",
+        input: "http://\u{203e}.com/",
+    },
     // U+05FC disallowed
-    NamedCase { name: "hebrew_punctuation_05fc", input: "http://\u{5fc}.com/" },
+    NamedCase {
+        name: "hebrew_punctuation_05fc",
+        input: "http://\u{5fc}.com/",
+    },
 ];
-
 
 // ---------------------------------------------------------------------------
 // Fast-path scheme jump / port / password edge cases
@@ -204,25 +249,51 @@ const IDNA_MAPPING_CASES: &[NamedCase] = &[
 
 const FAST_PATH_CASES: &[NamedCase] = &[
     // Leading-zero ports must not keep raw :0343
-    NamedCase { name: "port_leading_zeros", input: "https://example.com:0343/" },
+    NamedCase {
+        name: "port_leading_zeros",
+        input: "https://example.com:0343/",
+    },
     // Empty password after colon
-    NamedCase { name: "empty_password", input: "https://user:@example.com/" },
+    NamedCase {
+        name: "empty_password",
+        input: "https://user:@example.com/",
+    },
     // Colon inside password forces slow path
-    NamedCase { name: "password_contains_colon", input: "https://user:p:ass@example.com/" },
+    NamedCase {
+        name: "password_contains_colon",
+        input: "https://user:p:ass@example.com/",
+    },
     // Baseline https fast path
-    NamedCase { name: "https_simple", input: "https://example.com/" },
+    NamedCase {
+        name: "https_simple",
+        input: "https://example.com/",
+    },
     // Baseline http fast path
-    NamedCase { name: "http_simple", input: "http://example.com/" },
+    NamedCase {
+        name: "http_simple",
+        input: "http://example.com/",
+    },
     // Baseline ws fast path
-    NamedCase { name: "ws_simple", input: "ws://example.com/" },
+    NamedCase {
+        name: "ws_simple",
+        input: "ws://example.com/",
+    },
     // Baseline wss fast path
-    NamedCase { name: "wss_simple", input: "wss://example.com/" },
+    NamedCase {
+        name: "wss_simple",
+        input: "wss://example.com/",
+    },
     // Baseline ftp fast path
-    NamedCase { name: "ftp_simple", input: "ftp://example.com/" },
+    NamedCase {
+        name: "ftp_simple",
+        input: "ftp://example.com/",
+    },
     // Baseline file fast path
-    NamedCase { name: "file_simple", input: "file:///tmp/x" },
+    NamedCase {
+        name: "file_simple",
+        input: "file:///tmp/x",
+    },
 ];
-
 
 // ---------------------------------------------------------------------------
 // file: path, drive letters, empty segments
@@ -230,23 +301,46 @@ const FAST_PATH_CASES: &[NamedCase] = &[
 
 const FILE_PATH_CASES: &[NamedCase] = &[
     // Do not inject / after Windows drive before ./
-    NamedCase { name: "windows_drive_dot_segment", input: "file:///p:./foo" },
+    NamedCase {
+        name: "windows_drive_dot_segment",
+        input: "file:///p:./foo",
+    },
     // WPT/ada preserve empty file path segments
-    NamedCase { name: "empty_path_segments_preserved", input: "file:////foo" },
+    NamedCase {
+        name: "empty_path_segments_preserved",
+        input: "file:////foo",
+    },
     // Keep non-localhost file host (rust-url may drop)
-    NamedCase { name: "non_localhost_host_kept", input: "file://of2/f:" },
+    NamedCase {
+        name: "non_localhost_host_kept",
+        input: "file://of2/f:",
+    },
     // file://localhost → empty host
-    NamedCase { name: "localhost_normalized", input: "file://localhost/tmp" },
+    NamedCase {
+        name: "localhost_normalized",
+        input: "file://localhost/tmp",
+    },
     // file:c:/ drive form
-    NamedCase { name: "drive_letter_no_slash", input: "file:c:/windows/" },
+    NamedCase {
+        name: "drive_letter_no_slash",
+        input: "file:c:/windows/",
+    },
     // C| Windows drive normalization
-    NamedCase { name: "pipe_drive", input: "file:///C|/Windows/" },
+    NamedCase {
+        name: "pipe_drive",
+        input: "file:///C|/Windows/",
+    },
     // Empty segments only
-    NamedCase { name: "quad_slash_empty", input: "file:////" },
+    NamedCase {
+        name: "quad_slash_empty",
+        input: "file:////",
+    },
     // Dot segment at file root
-    NamedCase { name: "dot_segment_root", input: "file:///./" },
+    NamedCase {
+        name: "dot_segment_root",
+        input: "file:///./",
+    },
 ];
-
 
 // ---------------------------------------------------------------------------
 // Empty / control-laden @ authority
@@ -254,11 +348,20 @@ const FILE_PATH_CASES: &[NamedCase] = &[
 
 const AUTHORITY_CASES: &[NamedCase] = &[
     // Empty credentials + empty host → failure
-    NamedCase { name: "empty_at_http", input: "http://@/" },
+    NamedCase {
+        name: "empty_at_http",
+        input: "http://@/",
+    },
     // Empty @ authority rejected (ada/Node)
-    NamedCase { name: "empty_at_ftp", input: "ftp://@" },
+    NamedCase {
+        name: "empty_at_ftp",
+        input: "ftp://@",
+    },
     // Tab before @ still yields empty userinfo
-    NamedCase { name: "tab_before_userinfo_at", input: "https://\t@example.com/" },
+    NamedCase {
+        name: "tab_before_userinfo_at",
+        input: "https://\t@example.com/",
+    },
 ];
 
 /// Representative crash-corpus inputs (CheckBidi / historic RTL scripts).
@@ -334,7 +437,6 @@ const CRASH_OTHER: &[&str] = &[
     "d:/./wslto../\0/b:/../..///tp",
     "op://\t@?\t\tex#/\t0.0.1.0\t\t?#\t\t/",
 ];
-
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -465,10 +567,7 @@ fn regression_pinned_outcomes() {
         parse_no_panic("http://\u{203e}.com/").is_err(),
         "overline → space"
     );
-    assert!(
-        parse_no_panic("http://\u{5fc}.com/").is_err(),
-        "U+05FC"
-    );
+    assert!(parse_no_panic("http://\u{5fc}.com/").is_err(), "U+05FC");
     assert!(parse_no_panic("http://@/").is_err(), "empty @");
     assert!(parse_no_panic("ftp://@").is_err(), "ftp empty @");
 

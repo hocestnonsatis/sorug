@@ -15,8 +15,8 @@
 
 use std::borrow::Cow;
 
-use unicode_normalization::char::canonical_combining_class;
 use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::canonical_combining_class;
 
 use super::percent::AppendBuf;
 use super::unicode_ranges::{
@@ -388,13 +388,8 @@ fn label_fails_check_joiners(label: &str) -> bool {
         if c != '\u{200C}' {
             continue;
         }
-        let before = chars[..i]
-            .iter()
-            .rev()
-            .find(|c| !is_bidi_transparent(**c));
-        let after = chars[i + 1..]
-            .iter()
-            .find(|c| !is_bidi_transparent(**c));
+        let before = chars[..i].iter().rev().find(|c| !is_bidi_transparent(**c));
+        let after = chars[i + 1..].iter().find(|c| !is_bidi_transparent(**c));
         match (before, after) {
             (Some(&b), Some(&a)) if is_joining_letter(b) && is_joining_letter(a) => {}
             _ => return true,
@@ -553,9 +548,7 @@ fn map_char(c: char, out: &mut String) {
         // U+03F2 LUNATE SIGMA → U+03C3 (browsers keep U+03C2 final sigma as-is).
         '\u{03F2}' => out.push('\u{03C3}'),
         // Mathematical *final* sigma variants: UTS #46 maps to U+03C3 (not NFKC's U+03C2).
-        '\u{1D6D3}' | '\u{1D70D}' | '\u{1D747}' | '\u{1D781}' | '\u{1D7BB}' => {
-            out.push('\u{03C3}')
-        }
+        '\u{1D6D3}' | '\u{1D70D}' | '\u{1D747}' | '\u{1D781}' | '\u{1D7BB}' => out.push('\u{03C3}'),
         '\u{00AA}'
         | '\u{00BA}'
         | '\u{01C4}'..='\u{01CC}'
@@ -960,7 +953,10 @@ mod tick_fixes {
         assert_eq!(to_ascii("2e2\u{00aa}dta0").unwrap(), "2e2adta0");
         assert!(to_ascii("c\u{e691}").is_err());
         assert!(to_ascii("\u{200d}b").is_err());
-        assert_eq!(to_ascii("255.255.255.2\u{2075}85").unwrap(), "255.255.255.2585");
+        assert_eq!(
+            to_ascii("255.255.255.2\u{2075}85").unwrap(),
+            "255.255.255.2585"
+        );
         assert_eq!(to_ascii("\u{587}7\u{187}7f").unwrap(), "xn--77f-h4a750c8e");
         assert_eq!(to_ascii("7\u{2230},").unwrap(), "xn--7,-cevaa");
         assert_eq!(to_ascii("\u{314f}ile").unwrap(), "xn--ile-3do");
@@ -972,7 +968,7 @@ mod tick_fixes {
         assert_eq!(to_ascii("\u{5c0}").unwrap(), "xn--odb");
         assert!(to_ascii("0x=7f00\u{248b}ac").is_err());
         assert_eq!(to_ascii("s\u{3f2}x").unwrap(), "xn--sx-vbc");
-        assert_eq!(to_ascii("c\u{3c2}").unwrap(), "xn--c-ymb");  // keep final sigma
+        assert_eq!(to_ascii("c\u{3c2}").unwrap(), "xn--c-ymb"); // keep final sigma
         assert_eq!(to_ascii("D\u{7fd}").unwrap(), "xn--d-ued");
         assert_eq!(to_ascii("\u{7ff}\u{7c8}").unwrap(), "xn--jsb3i");
         assert_eq!(to_ascii("a\u{1160}b").unwrap(), "ab");
@@ -1005,10 +1001,7 @@ mod tick19 {
     use super::*;
     #[test]
     fn check_bidi_skips_cyrillic_marks() {
-        assert_eq!(
-            to_ascii("\u{5c0}\u{484}\u{5c5}").unwrap(),
-            "xn--n3a54dpa"
-        );
+        assert_eq!(to_ascii("\u{5c0}\u{484}\u{5c5}").unwrap(), "xn--n3a54dpa");
     }
     #[test]
     fn greek_ypogegrammeni_expands() {
@@ -1035,7 +1028,10 @@ mod tick19 {
             to_ascii("\u{079c}\u{065e}\u{065c}\u{0658}\u{0902}").unwrap(),
             "xn--0hbhg48jizc"
         );
-        assert_eq!(to_ascii("vvvvv\u{fb1e}\u{fb1e}").unwrap(), "xn--vvvvv-xi82aa");
+        assert_eq!(
+            to_ascii("vvvvv\u{fb1e}\u{fb1e}").unwrap(),
+            "xn--vvvvv-xi82aa"
+        );
         assert_eq!(to_ascii("f\u{fb1e}\u{ff9e}").unwrap(), "xn--f-wdu9988e");
         assert_eq!(
             to_ascii("\u{079c}\u{065c}\u{1886}").unwrap(),
@@ -1056,10 +1052,7 @@ mod tick19 {
         assert!(to_ascii("\u{1c8b}").is_err());
         assert!(to_ascii("\u{079c}\u{08d2}").is_err()); // Node rejects Ext-A mark mix
         assert!(to_ascii("AGAAA.\u{33c2}\u{3002}DFx").is_err());
-        assert_eq!(
-            to_ascii("\u{1940}DE\u{1fc4}").unwrap(),
-            "xn--de-38b8b108q"
-        );
+        assert_eq!(to_ascii("\u{1940}DE\u{1fc4}").unwrap(), "xn--de-38b8b108q");
     }
 }
 
@@ -1174,10 +1167,7 @@ mod tick23 {
         assert_eq!(to_ascii("\u{10c32}\u{11c32}").unwrap(), "xn--969c66y"); // Bhaiksuki Mn
         assert_eq!(to_ascii("\u{0851}\u{a80b}").unwrap(), "xn--gwb4982f"); // Syloti Mn
         assert_eq!(to_ascii("\u{10e9d}\u{10e72}").unwrap(), "xn--qo0dzc"); // Rumi AN trailer
-        assert_eq!(
-            to_ascii("\u{10810}&0\u{11c32}").unwrap(),
-            "xn--&0-li9nk85d"
-        );
+        assert_eq!(to_ascii("\u{10810}&0\u{11c32}").unwrap(), "xn--&0-li9nk85d");
         // Meroitic Cursive number (Bidi=R, No) + letter
         assert_eq!(to_ascii("\u{109f2}\u{109b2}").unwrap(), "xn--zo9che");
         // Kharoshthi + Nabataean (both Bidi=R)
@@ -1185,7 +1175,10 @@ mod tick23 {
         // Sidetic (U+10945) + Old North Arabian — Node rejects (CheckBidi); we match Node
         assert!(to_ascii("\u{10a85}\u{10a85}\u{10945}").is_err());
         assert_eq!(to_ascii("\u{10b0b}\u{10f1d}").unwrap(), "xn--uy9co3e"); // Old Sogdian number
-        assert_eq!(to_ascii("\u{0624}\u{1bed}\u{a92d}").unwrap(), "xn--jgb862ip43h"); // Kayah Li Mn
+        assert_eq!(
+            to_ascii("\u{0624}\u{1bed}\u{a92d}").unwrap(),
+            "xn--jgb862ip43h"
+        ); // Kayah Li Mn
         assert_eq!(to_ascii("\u{10b1d}\u{10a9d}").unwrap(), "xn--pv9cpi"); // ONA number
         assert_eq!(
             to_ascii("\u{10a9d}\u{10e9d}.\u{10e9d}\u{10e9d}.\u{10cb2}").unwrap(),
@@ -1202,9 +1195,15 @@ mod tick23 {
         assert_eq!(to_ascii("\u{10b72}\u{10b79}").unwrap(), "xn--s19coa"); // Pahlavi number
         assert_eq!(to_ascii("\u{108af}\u{108f2}").unwrap(), "xn--lh9coe"); // Nabataean number
         assert_eq!(to_ascii("\u{10c32}\u{116b2}").unwrap(), "xn--969cg3p"); // Takri Mn
-        assert_eq!(to_ascii("\u{0704}\u{135d}\u{1cdd}").unwrap(), "xn--xmb634dpmh"); // Ethiopic Mn
+        assert_eq!(
+            to_ascii("\u{0704}\u{135d}\u{1cdd}").unwrap(),
+            "xn--xmb634dpmh"
+        ); // Ethiopic Mn
         assert_eq!(to_ascii("\u{0624}\u{a9e5}").unwrap(), "xn--jgb6594f"); // Myanmar Shan Mn
-        assert_eq!(to_ascii("\u{0624}\u{a9e5}\u{abe5}").unwrap(), "xn--jgb6594f5ib");
+        assert_eq!(
+            to_ascii("\u{0624}\u{a9e5}\u{abe5}").unwrap(),
+            "xn--jgb6594f5ib"
+        );
         assert!(to_ascii("\u{10a85}\u{10d85}").is_err()); // Garay+ONA; Node rejects
         assert_eq!(to_ascii("\u{10810}0\u{11832}").unwrap(), "xn--0-tf4iw31b"); // Dogra Mn
         assert_eq!(to_ascii("\u{10add}\u{102e6}").unwrap(), "xn--987cr4l"); // Coptic Epact EN
@@ -1220,7 +1219,10 @@ mod tick23 {
             to_ascii("\u{10c9d}\u{10c9d}\u{11cb2}.\u{10cb2}").unwrap(),
             "xn--5c0da372j.xn--rd0d"
         ); // Marchen Mn
-        assert_eq!(to_ascii("\u{0851}\u{aab8}\u{a678}").unwrap(), "xn--gwb8802fixc"); // Cyr Ext Mn
+        assert_eq!(
+            to_ascii("\u{0851}\u{aab8}\u{a678}").unwrap(),
+            "xn--gwb8802fixc"
+        ); // Cyr Ext Mn
         assert_eq!(
             to_ascii("\u{10810}\u{11831}\u{1163a}\u{1143a}").unwrap(),
             "xn--1c9cs1s4pbq1c"
@@ -1231,12 +1233,18 @@ mod tick23 {
             "xn--ehb6caaa8181b"
         ); // Comb marks for symbols
         assert_eq!(to_ascii("\u{10a90}\u{1da9d}").unwrap(), "xn--cv9cw466a"); // SignWriting Mn
-        assert_eq!(to_ascii("\u{10e9d}\u{10e9d}\u{11236}").unwrap(), "xn--yp0da77y"); // Khojki Mn
+        assert_eq!(
+            to_ascii("\u{10e9d}\u{10e9d}\u{11236}").unwrap(),
+            "xn--yp0da77y"
+        ); // Khojki Mn
         assert_eq!(
             to_ascii("\u{10810}\u{11d32}\u{10810}\u{10d32}").unwrap(),
             "xn--1c9ca650bc5t"
         ); // Hanifi Rohingya digit
-        assert_eq!(to_ascii("\u{0851}\u{a672}\u{aa36}").unwrap(), "xn--gwb6702fwmc"); // Cyr Me
+        assert_eq!(
+            to_ascii("\u{0851}\u{a672}\u{aa36}").unwrap(),
+            "xn--gwb6702fwmc"
+        ); // Cyr Me
         assert_eq!(
             to_ascii("\u{10810}\u{1183a}\u{1143a}\u{114ba}").unwrap(),
             "xn--1c9cs1s8kar9i"
@@ -1249,7 +1257,10 @@ mod tick23 {
         assert!(to_ascii("\u{10810}\u{13440}").is_err()); // Egyptian hieroglyph + Cypriot; Node rejects
         assert_eq!(to_ascii("\u{10f52}\u{10f50}").unwrap(), "xn--2u0dd"); // Sogdian Mn
         assert_eq!(to_ascii("\u{0798}\u{1a18}").unwrap(), "xn--5qb685g"); // Buginese Mn
-        assert_eq!(to_ascii("\u{0704}\u{1922}\u{1ba2}\u{1ba2}\u{1ba2}").unwrap(), "xn--xmb093g4ybaa"); // Limbu Mn
+        assert_eq!(
+            to_ascii("\u{0704}\u{1922}\u{1ba2}\u{1ba2}\u{1ba2}").unwrap(),
+            "xn--xmb093g4ybaa"
+        ); // Limbu Mn
         assert_eq!(to_ascii("\u{1e950}\u{1e810}").unwrap(), "xn--g55h5t"); // Adlam digit
         assert_eq!(to_ascii("\u{10a52}\u{11a52}").unwrap(), "xn--kt9c66y"); // Soyombo Mn
         assert_eq!(to_ascii("\u{10810}\u{11128}").unwrap(), "xn--1c9cg9m"); // Chakma Mn
@@ -1305,10 +1316,7 @@ mod tick23 {
             "xn--lwb0232flbcaa"
         );
         assert!(to_ascii("\u{1bca0}").is_err()); // Shorthand alone → empty; Node rejects
-        assert_eq!(
-            to_ascii("\u{1bca2}tttt").unwrap(),
-            "tttt"
-        ); // Shorthand format ignored
+        assert_eq!(to_ascii("\u{1bca2}tttt").unwrap(), "tttt"); // Shorthand format ignored
         assert_eq!(to_ascii("'\u{1bca2}").unwrap(), "'");
         assert_eq!(
             to_ascii("\u{10a94}\u{1d17d}\u{1da3d}").unwrap(),

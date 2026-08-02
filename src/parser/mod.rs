@@ -928,8 +928,7 @@ impl<'b, 'i> Parser<'b, 'i> {
         if at == 0 || userinfo_empty {
             input.skip_bytes(at + 1); // consume optional ws + '@'
             let (c, _) = input.split_first();
-            if matches!(c, Some('/' | '?' | '#')) || (special && c == Some('\\')) || c.is_none()
-            {
+            if matches!(c, Some('/' | '?' | '#')) || (special && c == Some('\\')) || c.is_none() {
                 return Err(ParseError::Failure);
             }
             return Ok((to_u32(self.serialization.len())?, input, 0));
