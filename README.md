@@ -1,9 +1,5 @@
 # sorug
 
-> **Status: Early release (`0.1.x`) on [crates.io](https://crates.io/crates/sorug).**
->
-> APIs may still change before `1.0`. Pin a version and watch release notes.
-
 [![CI](https://github.com/hocestnonsatis/sorug/actions/workflows/ci.yml/badge.svg)](https://github.com/hocestnonsatis/sorug/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/sorug.svg)](https://crates.io/crates/sorug)
 [![docs.rs](https://docs.rs/sorug/badge.svg)](https://docs.rs/sorug)
@@ -86,7 +82,7 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 **Today**
 
-- Published on [crates.io](https://crates.io/crates/sorug) as **`0.1.1`** (early release).
+- Published on [crates.io](https://crates.io/crates/sorug) as **`0.1.1`**.
 - WPT: **891 / 891**. Core ASCII / file / complex-query / IDNA paths lead ada-url.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug).
 

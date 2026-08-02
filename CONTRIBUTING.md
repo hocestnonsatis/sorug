@@ -86,7 +86,7 @@ Guidelines:
 - [ ] No new `unsafe` and no lint overrides that weaken `forbid(unsafe_code)`.
 - [ ] Zero-copy / CoW invariants preserved for ASCII-canonical inputs.
 - [ ] Benchmarks run if the change touches the hot path; summarize deltas.
-- [ ] Public API changes are documented and called out (crate is **pre-release**; breaking changes are allowed but must be explicit).
+- [ ] Public API changes are documented and called out (breaking changes must be explicit).
 - [ ] New behavior covered by tests (WPT case, unit test, or comprehensive validation).
 
 ## Issues and discussion
