@@ -101,7 +101,7 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 **Today**
 
-- Published on [crates.io](https://crates.io/crates/sorug); in-tree version **`0.2.0`**.
+- Published on [crates.io](https://crates.io/crates/sorug) as **`0.2.0`**.
 - WPT parser: **891 / 891**; WPT setters: **278 / 278**.
 - Public API: parse + getters, `origin`, component setters, `SearchParams` / form-urlencoded.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug).
