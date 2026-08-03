@@ -4,6 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/sorug.svg)](https://crates.io/crates/sorug)
 [![docs.rs](https://docs.rs/sorug/badge.svg)](https://docs.rs/sorug)
 [![WPT](https://img.shields.io/badge/WPT-891%2F891-brightgreen)](https://github.com/hocestnonsatis/sorug)
+[![WPT setters](https://img.shields.io/badge/WPT%20setters-278%2F278-brightgreen)](https://github.com/hocestnonsatis/sorug)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success)](https://github.com/hocestnonsatis/sorug/blob/main/CONTRIBUTING.md)
 
@@ -17,6 +18,7 @@
 | **SIMD / SWAR** | 64-bit scheme-prefix jumps + SWAR delimiter scans for short inputs; [`memchr`](https://crates.io/crates/memchr) for longer buffers. |
 | **Custom Punycode** | Lightweight in-crate Punycode / minimal UTS #46 — no heavy `idna` dependency. |
 | **891 / 891 WPT** | Full pass of the Web Platform Tests `urltestdata` suite shipped in-tree. |
+| **278 / 278 setters** | Full pass of WPT `setters_tests.json` (component mutators). |
 | **`forbid(unsafe_code)`** | Zero `unsafe` in library code. Correctness first; speed without memory-safety shortcuts. |
 
 ## Benchmarks
@@ -46,7 +48,7 @@ cargo add sorug
 
 ```toml
 [dependencies]
-sorug = "0.1"
+sorug = "0.2"
 ```
 
 ```rust
@@ -57,8 +59,25 @@ fn main() -> Result<(), sorug::ParseError> {
     assert_eq!(url.scheme(), "https");
     assert_eq!(url.host(), Some("example.com"));
     assert_eq!(url.as_str(), "https://example.com/path?q=1#frag");
+    assert_eq!(url.origin().serialized(), "https://example.com");
     Ok(())
 }
+```
+
+Mutate components (WHATWG / WPT setters) and edit the query as form-urlencoded pairs:
+
+```rust
+use sorug::{SearchParams, Url};
+
+let mut url = Url::parse("https://example.com/old")?;
+url.set_pathname("/api/v1");
+url.set_search("?q=1");
+assert_eq!(url.href(), "https://example.com/api/v1?q=1");
+
+let mut params = SearchParams::parse("q=1");
+params.append("lang", "tr");
+url.set_search_params(&params);
+assert_eq!(url.search(), "?q=1&lang=tr");
 ```
 
 Relative resolution with a base URL:
@@ -82,16 +101,16 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 **Today**
 
-- Published on [crates.io](https://crates.io/crates/sorug) as **`0.1.1`**.
-- WPT: **891 / 891**. Core ASCII / file / complex-query / IDNA paths lead ada-url.
+- Published on [crates.io](https://crates.io/crates/sorug); in-tree version **`0.2.0`**.
+- WPT parser: **891 / 891**; WPT setters: **278 / 278**.
+- Public API: parse + getters, `origin`, component setters, `SearchParams` / form-urlencoded.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug).
 
 **Next**
 
 - Stabilize public API toward `1.0`.
-- Expanded examples and docs.
+- `join` / `make_relative`, optional serde, optional `no_std` (+ `alloc`).
 - Continued differential testing against rust-url / ada where intentional divergences are documented.
-- Optional `no_std` (+ `alloc`) exploration without sacrificing the zero-copy fast path.
 
 **Not goals (for now)**
 
@@ -109,6 +128,7 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 ```bash
 cargo test                 # unit + integration (incl. WPT + comprehensive validation)
 cargo test --test wpt      # WPT urltestdata only
+cargo test --test wpt_setters  # WPT setters_tests only
 cargo bench                # Criterion vs ada-url and servo/url
 ```
 

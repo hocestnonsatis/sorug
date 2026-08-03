@@ -28,9 +28,11 @@ pub(crate) mod percent;
 pub(crate) mod punycode;
 pub(crate) mod scan;
 pub(crate) mod serialization;
+pub(crate) mod setters;
 pub(crate) mod unicode_ranges;
 
 use core::fmt::Write as _;
+use std::borrow::Cow;
 use std::str::Chars;
 
 use self::host::{AppendedHost, Host, append_host, parse_host, parse_opaque_host};
@@ -40,7 +42,7 @@ use self::percent::{
 };
 use self::scan::{
     find_authority_end, find_file_host_end, find_hash, find_host_end, find_last_at,
-    find_path_delim, find_query_or_hash, has_ascii_tab_or_newline,
+    find_path_delim, find_path_delim_setter, find_query_or_hash, has_ascii_tab_or_newline,
 };
 use crate::{Backing, ParseError};
 
@@ -154,6 +156,7 @@ pub(crate) fn parse<'i>(
     Parser {
         serialization: SerializationBuf::new(trimmed),
         base_url: base,
+        for_setter: false,
     }
     .parse_url(trimmed)
 }
@@ -200,6 +203,74 @@ fn default_port(scheme: &str) -> Option<u16> {
     }
 }
 
+/// Public crate helper for origin serialization / setters.
+#[inline]
+pub(crate) fn default_port_for_scheme(scheme: &str) -> Option<u16> {
+    default_port(scheme)
+}
+
+/// Parse a host for URL setters (mirrors rust-url `Parser::parse_host`).
+///
+/// Returns `(host, host_was_empty_domain, remaining)`.
+pub(crate) fn parse_host_setter<'i>(
+    mut input: Input<'i>,
+    scheme_type: SchemeType,
+) -> Result<(Host<'static>, bool, Input<'i>), ParseError> {
+    if scheme_type.is_file() {
+        let (_, host_str, remaining) = Parser::file_host(input)?;
+        if host_str.is_empty() {
+            return Ok((Host::Domain(Cow::Owned(String::new())), true, remaining));
+        }
+        let host = match parse_host(&host_str)? {
+            Host::Domain(ref d) if d.as_ref() == "localhost" => {
+                Host::Domain(Cow::Owned(String::new()))
+            }
+            Host::Domain(d) => Host::Domain(Cow::Owned(d.into_owned())),
+            Host::Ipv4(ip) => Host::Ipv4(ip),
+            Host::Ipv6(ip) => Host::Ipv6(ip),
+        };
+        let empty = matches!(&host, Host::Domain(d) if d.is_empty());
+        return Ok((host, empty, remaining));
+    }
+
+    let input_str = input.as_str();
+    let bytes = input_str.as_bytes();
+    let (byte_end, has_ignored) = find_host_end(bytes, scheme_type.is_special());
+
+    let host_str: Cow<'_, str> = if has_ignored {
+        Cow::Owned(
+            input_str[..byte_end]
+                .chars()
+                .filter(|c| !is_ascii_tab_or_newline(*c))
+                .collect(),
+        )
+    } else {
+        Cow::Borrowed(&input_str[..byte_end])
+    };
+    input.skip_bytes(byte_end);
+
+    if scheme_type == SchemeType::SpecialNotFile && host_str.is_empty() {
+        return Err(ParseError::Failure);
+    }
+
+    if !scheme_type.is_special() {
+        let host = parse_opaque_host(&host_str)?;
+        let empty = matches!(&host, Host::Domain(d) if d.is_empty());
+        return Ok((host, empty, input));
+    }
+
+    if host_str.is_empty() {
+        return Ok((Host::Domain(Cow::Owned(String::new())), true, input));
+    }
+
+    let host = match parse_host(&host_str)? {
+        Host::Domain(d) => Host::Domain(Cow::Owned(d.into_owned())),
+        Host::Ipv4(ip) => Host::Ipv4(ip),
+        Host::Ipv6(ip) => Host::Ipv6(ip),
+    };
+    Ok((host, false, input))
+}
+
 fn scheme_flags(scheme_type: SchemeType) -> u8 {
     if scheme_type.is_special() {
         FLAG_SPECIAL
@@ -213,15 +284,29 @@ fn scheme_flags(scheme_type: SchemeType) -> u8 {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
-struct Input<'i> {
+pub(crate) struct Input<'i> {
     chars: Chars<'i>,
 }
 
 impl<'i> Input<'i> {
-    fn new(input: &'i str) -> Self {
+    #[inline]
+    pub(crate) fn new(input: &'i str) -> Self {
         Self {
             chars: input.chars(),
         }
+    }
+
+    /// Setter-friendly input: no C0/space trim; still skips ASCII tab/LF/CR while iterating.
+    #[inline]
+    pub(crate) fn new_no_trim(input: &'i str) -> Self {
+        Self::new(input)
+    }
+
+    /// Trim leading/trailing ASCII tab/LF/CR (query setter).
+    #[inline]
+    pub(crate) fn new_trim_tab_and_newlines(original: &'i str) -> Self {
+        let input = original.trim_matches(|ch: char| matches!(ch, '\t' | '\n' | '\r'));
+        Self::new(input)
     }
 
     #[allow(dead_code)]
@@ -339,7 +424,7 @@ fn is_ascii_tab_or_newline(ch: char) -> bool {
 }
 
 #[inline]
-fn to_u32(i: usize) -> Result<u32, ParseError> {
+pub(crate) fn to_u32(i: usize) -> Result<u32, ParseError> {
     u32::try_from(i).map_err(|_| ParseError::InputTooLong)
 }
 
@@ -394,6 +479,8 @@ fn starts_with_windows_drive_letter_segment(input: &Input<'_>) -> bool {
 struct Parser<'b, 'i> {
     serialization: SerializationBuf<'i>,
     base_url: Option<&'b ParsedUrl<'b>>,
+    /// When true, `?` / `#` are path/query content (percent-encoded), not delimiters.
+    for_setter: bool,
 }
 
 impl<'b, 'i> Parser<'b, 'i> {
@@ -1113,7 +1200,7 @@ impl<'b, 'i> Parser<'b, 'i> {
         }
     }
 
-    fn file_host(input: Input<'_>) -> Result<(bool, String, Input<'_>), ParseError> {
+    pub(crate) fn file_host(input: Input<'_>) -> Result<(bool, String, Input<'_>), ParseError> {
         let input_str = input.as_str();
         let bytes = input_str.as_bytes();
         let (byte_end, has_ignored) = find_file_host_end(bytes);
@@ -1164,8 +1251,77 @@ impl<'b, 'i> Parser<'b, 'i> {
         }
         Ok((opt_port, input))
     }
+}
 
-    fn parse_path_start<'s>(
+/// Port parser for URL component setters (`Context::Setter` in rust-url).
+///
+/// Digits are consumed until a non-digit; non-digits do **not** fail (unlike the
+/// URL parser). Overflow fails. Empty input → null port. Empty-with-remaining
+/// (leading non-digit) fails. Default port → `None`.
+pub(crate) fn parse_port_setter(
+    mut input: Input<'_>,
+    default: Option<u16>,
+) -> Result<(Option<u16>, Input<'_>), ParseError> {
+    let mut port: u32 = 0;
+    let mut has_any_digit = false;
+    while let (Some(c), remaining) = input.split_first() {
+        if let Some(digit) = c.to_digit(10) {
+            port = port * 10 + digit;
+            if port > u16::MAX as u32 {
+                return Err(ParseError::Failure);
+            }
+            has_any_digit = true;
+            input = remaining;
+        } else {
+            break;
+        }
+    }
+    // No digits → failure (caller treats empty raw string separately for clear).
+    if !has_any_digit {
+        return Err(ParseError::Failure);
+    }
+    let mut opt_port = Some(port as u16);
+    if opt_port == default {
+        opt_port = None;
+    }
+    Ok((opt_port, input))
+}
+
+// Re-open Parser impl block for path / query helpers used by setters.
+impl<'b, 'i> Parser<'b, 'i> {
+    pub(crate) fn for_setter(serialization: SerializationBuf<'i>) -> Self {
+        Self {
+            serialization,
+            base_url: None,
+            for_setter: true,
+        }
+    }
+
+    /// Scheme parse for setters: EOF before `:` is success (unlike the URL parser).
+    pub(crate) fn parse_scheme_setter<'s>(
+        &mut self,
+        mut input: Input<'s>,
+    ) -> Result<Input<'s>, ()> {
+        if !input.starts_with_ascii_alpha() {
+            return Err(());
+        }
+        debug_assert!(self.serialization.is_empty());
+        while let Some(c) = input.next() {
+            match c {
+                'a'..='z' | '0'..='9' | '+' | '-' | '.' => self.serialization.push(c),
+                'A'..='Z' => self.serialization.push(c.to_ascii_lowercase()),
+                ':' => return Ok(input),
+                _ => {
+                    self.serialization.clear();
+                    return Err(());
+                }
+            }
+        }
+        // Setter context: EOF is OK.
+        Ok(input)
+    }
+
+    pub(crate) fn parse_path_start<'s>(
         &mut self,
         scheme_type: SchemeType,
         has_host: &mut bool,
@@ -1182,7 +1338,7 @@ impl<'b, 'i> Parser<'b, 'i> {
                 return self.parse_path(scheme_type, has_host, path_start, remaining);
             }
             return self.parse_path(scheme_type, has_host, path_start, input);
-        } else if matches!(maybe_c, Some('?' | '#')) {
+        } else if !self.for_setter && matches!(maybe_c, Some('?' | '#')) {
             return input;
         }
 
@@ -1192,7 +1348,7 @@ impl<'b, 'i> Parser<'b, 'i> {
         self.parse_path(scheme_type, has_host, path_start, input)
     }
 
-    fn parse_path<'s>(
+    pub(crate) fn parse_path<'s>(
         &mut self,
         scheme_type: SchemeType,
         _has_host: &mut bool,
@@ -1207,7 +1363,11 @@ impl<'b, 'i> Parser<'b, 'i> {
             // SIMD fast path: no tab/LF/CR in the upcoming segment → bulk copy.
             let raw = input.as_str();
             let bytes = raw.as_bytes();
-            let delim = find_path_delim(bytes, special);
+            let delim = if self.for_setter {
+                find_path_delim_setter(bytes, special)
+            } else {
+                find_path_delim(bytes, special)
+            };
             let seg_end = delim.map_or(bytes.len(), |(i, _)| i);
             let chunk = &bytes[..seg_end];
 
@@ -1234,7 +1394,7 @@ impl<'b, 'i> Parser<'b, 'i> {
                             input.skip_bytes(1);
                         }
                         b'?' | b'#' => {
-                            // Leave delimiter for the caller.
+                            // Leave delimiter for the caller (URL parser only).
                         }
                         _ => unreachable!(),
                     }
@@ -1258,7 +1418,7 @@ impl<'b, 'i> Parser<'b, 'i> {
                             ends_with_slash = true;
                             break;
                         }
-                        '?' | '#' => {
+                        '?' | '#' if !self.for_setter => {
                             input = input_before_c;
                             break;
                         }
@@ -1368,7 +1528,7 @@ impl<'b, 'i> Parser<'b, 'i> {
         }
     }
 
-    fn parse_opaque_path<'s>(&mut self, mut input: Input<'s>) -> Input<'s> {
+    pub(crate) fn parse_opaque_path<'s>(&mut self, mut input: Input<'s>) -> Input<'s> {
         let path_begin = self.serialization.len();
         loop {
             let raw = input.as_str();
@@ -1523,7 +1683,7 @@ impl<'b, 'i> Parser<'b, 'i> {
         Ok((query_start, Some(fragment_start)))
     }
 
-    fn parse_query<'s>(
+    pub(crate) fn parse_query<'s>(
         &mut self,
         scheme_type: SchemeType,
         mut input: Input<'s>,
@@ -1532,6 +1692,21 @@ impl<'b, 'i> Parser<'b, 'i> {
         loop {
             let raw = input.as_str();
             let bytes = raw.as_bytes();
+            if self.for_setter {
+                // Setters: `#` is query content (percent-encoded), not a delimiter.
+                if !has_ascii_tab_or_newline(bytes) {
+                    append_query(raw, special, &mut self.serialization);
+                    input.skip_bytes(bytes.len());
+                    return None;
+                }
+                match input.next_utf8() {
+                    Some((_, utf8_c)) => {
+                        append_query(utf8_c, special, &mut self.serialization);
+                    }
+                    None => return None,
+                }
+                continue;
+            }
             match find_hash(bytes) {
                 Some(i) if !has_ascii_tab_or_newline(&bytes[..i]) => {
                     append_query(&raw[..i], special, &mut self.serialization);
@@ -1592,7 +1767,7 @@ impl<'b, 'i> Parser<'b, 'i> {
         })
     }
 
-    fn parse_fragment(&mut self, mut input: Input<'i>) {
+    pub(crate) fn parse_fragment(&mut self, mut input: Input<'_>) {
         loop {
             let raw = input.as_str();
             let bytes = raw.as_bytes();

@@ -20,6 +20,8 @@ use std::process::Command;
 
 const WPT_URL: &str = "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/urltestdata.json";
 const WPT_PATH: &str = "tests/urltestdata.json";
+const WPT_SETTERS_URL: &str = "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/setters_tests.json";
+const WPT_SETTERS_PATH: &str = "tests/setters_tests.json";
 const RANGES_PATH: &str = "data/idna_ranges.txt";
 
 /// Known table sections → Rust static identifiers in the generated file.
@@ -42,46 +44,47 @@ const SECTIONS: &[(&str, &str)] = &[
 ];
 
 fn main() {
-    ensure_wpt_fixture();
+    ensure_wpt_fixture(WPT_PATH, WPT_URL);
+    ensure_wpt_fixture(WPT_SETTERS_PATH, WPT_SETTERS_URL);
     generate_idna_tables();
 }
 
 // ---------------------------------------------------------------------------
-// WPT fixture
+// WPT fixtures
 // ---------------------------------------------------------------------------
 
-fn ensure_wpt_fixture() {
-    println!("cargo:rerun-if-changed={WPT_PATH}");
+fn ensure_wpt_fixture(path: &str, url: &str) {
+    println!("cargo:rerun-if-changed={path}");
 
-    let path = Path::new(WPT_PATH);
-    if path.is_file() {
+    let path_buf = Path::new(path);
+    if path_buf.is_file() {
         return;
     }
 
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path_buf.parent() {
         fs::create_dir_all(parent).unwrap_or_else(|e| {
             panic!("failed to create {}: {e}", parent.display());
         });
     }
 
-    eprintln!("cargo:warning=downloading WPT urltestdata.json → {WPT_PATH}");
+    eprintln!("cargo:warning=downloading WPT fixture → {path}");
 
     let status = Command::new("curl")
-        .args(["-fsSL", "-o", WPT_PATH, WPT_URL])
+        .args(["-fsSL", "-o", path, url])
         .status()
         .unwrap_or_else(|e| {
             panic!(
-                "failed to run curl ({e}). Install curl or place {WPT_PATH} manually from:\n  {WPT_URL}"
+                "failed to run curl ({e}). Install curl or place {path} manually from:\n  {url}"
             );
         });
 
     assert!(
         status.success(),
-        "curl failed downloading urltestdata.json (status {status}). Source:\n  {WPT_URL}"
+        "curl failed downloading {path} (status {status}). Source:\n  {url}"
     );
     assert!(
-        path.is_file(),
-        "download reported success but {WPT_PATH} is missing"
+        path_buf.is_file(),
+        "download reported success but {path} is missing"
     );
 }
 

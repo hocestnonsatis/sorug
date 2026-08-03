@@ -308,6 +308,16 @@ pub(crate) fn find_path_delim(haystack: &[u8], special: bool) -> Option<(usize, 
     Some((i, haystack[i]))
 }
 
+/// Path delimiters for component setters: `?` / `#` are content, not terminators.
+pub(crate) fn find_path_delim_setter(haystack: &[u8], special: bool) -> Option<(usize, u8)> {
+    let i = if special {
+        find2(b'/', b'\\', haystack)?
+    } else {
+        find1(b'/', haystack)?
+    };
+    Some((i, haystack[i]))
+}
+
 /// First `#` in the query (fragment start).
 #[inline(always)]
 pub(crate) fn find_hash(haystack: &[u8]) -> Option<usize> {

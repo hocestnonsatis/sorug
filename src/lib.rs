@@ -21,6 +21,9 @@
 )]
 
 mod parser;
+mod search_params;
+
+pub use search_params::{SearchParams, parse_urlencoded, serialize_urlencoded};
 
 use core::fmt;
 use core::ops::Range;
@@ -161,6 +164,50 @@ impl UrlFlags {
 }
 
 // ---------------------------------------------------------------------------
+// Origin
+// ---------------------------------------------------------------------------
+
+/// A URL [origin](https://url.spec.whatwg.org/#concept-url-origin): either an
+/// opaque origin or a `(scheme, host, port)` tuple.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Origin {
+    /// Globally unique / non-tuple origin (file, non-special, failed blob, …).
+    Opaque,
+    /// Tuple origin of scheme, host serialization, and port (default applied).
+    Tuple {
+        scheme: String,
+        host: String,
+        port: u16,
+    },
+}
+
+impl Origin {
+    /// ASCII serialization of an origin (`"null"` or `"scheme://host[:port]"`).
+    ///
+    /// Default ports are omitted per the HTML ASCII serialization of an origin.
+    #[must_use]
+    pub fn serialized(&self) -> String {
+        match self {
+            Self::Opaque => String::from("null"),
+            Self::Tuple { scheme, host, port } => {
+                if parser::default_port_for_scheme(scheme) == Some(*port) {
+                    format!("{scheme}://{host}")
+                } else {
+                    format!("{scheme}://{host}:{port}")
+                }
+            }
+        }
+    }
+
+    /// Whether this is a tuple origin.
+    #[inline]
+    #[must_use]
+    pub const fn is_tuple(&self) -> bool {
+        matches!(self, Self::Tuple { .. })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Serialization backing (CoW)
 // ---------------------------------------------------------------------------
 
@@ -221,6 +268,22 @@ impl Backing<'_> {
         match self {
             Self::Borrowed(s) => Backing::Owned(s.to_owned()),
             Self::Owned(s) => Backing::Owned(s),
+        }
+    }
+
+    /// Upgrade to [`Owned`](Backing::Owned) in place if currently borrowed.
+    pub fn ensure_owned(&mut self) {
+        if let Self::Borrowed(s) = self {
+            *self = Self::Owned((*s).to_owned());
+        }
+    }
+
+    /// Mutable access to the owned serialization buffer (upgrades if needed).
+    pub fn as_mut_string(&mut self) -> &mut String {
+        self.ensure_owned();
+        match self {
+            Self::Owned(s) => s,
+            Self::Borrowed(_) => unreachable!("ensure_owned left Borrowed"),
         }
     }
 }
@@ -375,17 +438,17 @@ impl<'a> Url<'a> {
     }
 
     #[inline]
-    fn byte_at(&self, i: u32) -> u8 {
+    pub(crate) fn byte_at(&self, i: u32) -> u8 {
         self.serialization.as_bytes()[i as usize]
     }
 
     #[inline]
-    fn slice(&self, range: Range<u32>) -> &str {
+    pub(crate) fn slice(&self, range: Range<u32>) -> &str {
         &self.as_str()[range.start as usize..range.end as usize]
     }
 
     #[inline]
-    fn has_authority(&self) -> bool {
+    pub(crate) fn has_authority(&self) -> bool {
         self.serialization.len() >= self.scheme_end as usize + 3
             && self.byte_at(self.scheme_end + 1) == b'/'
             && self.byte_at(self.scheme_end + 2) == b'/'
@@ -582,6 +645,79 @@ impl<'a> Url<'a> {
         self.as_str()
     }
 
+    /// WHATWG [origin](https://url.spec.whatwg.org/#concept-url-origin) of this URL.
+    #[must_use]
+    pub fn origin(&self) -> Origin {
+        match self.scheme() {
+            "blob" => {
+                // Parse the path serialization; only http/https/file inner schemes
+                // contribute a non-opaque origin (file itself is treated as opaque).
+                match Url::parse(self.path()) {
+                    Ok(inner) => match inner.scheme() {
+                        "http" | "https" | "file" => inner.origin(),
+                        _ => Origin::Opaque,
+                    },
+                    Err(_) => Origin::Opaque,
+                }
+            }
+            "ftp" | "http" | "https" | "ws" | "wss" => {
+                let host = match self.host() {
+                    Some(h) => h.to_owned(),
+                    None => return Origin::Opaque,
+                };
+                let port = self
+                    .port_u16()
+                    .or_else(|| parser::default_port_for_scheme(self.scheme()))
+                    .unwrap_or(0);
+                Origin::Tuple {
+                    scheme: self.scheme().to_owned(),
+                    host,
+                    port,
+                }
+            }
+            // file and everything else → opaque
+            _ => Origin::Opaque,
+        }
+    }
+
+    /// Parse this URL's query as [`SearchParams`] (`URL.searchParams` stringification).
+    ///
+    /// Empty / missing query yields an empty list.
+    #[must_use]
+    pub fn search_params(&self) -> SearchParams {
+        match self.query() {
+            Some(q) => SearchParams::parse(q),
+            None => SearchParams::new(),
+        }
+    }
+
+    /// Replace the query from an iterator of name/value pairs (urlencoded).
+    ///
+    /// An empty iterator clears the query (`set_query(None)`).
+    pub fn set_query_pairs<'b, I>(&mut self, pairs: I)
+    where
+        I: IntoIterator<Item = (&'b str, &'b str)>,
+    {
+        let serialized = serialize_urlencoded(pairs);
+        if serialized.is_empty() {
+            self.set_query(None);
+        } else {
+            self.set_query(Some(&serialized));
+        }
+    }
+
+    /// Replace the query using a [`SearchParams`] list.
+    ///
+    /// An empty list clears the query.
+    pub fn set_search_params(&mut self, params: &SearchParams) {
+        if params.is_empty() {
+            self.set_query(None);
+        } else {
+            let s = params.serialize();
+            self.set_query(Some(&s));
+        }
+    }
+
     /// Percent-decode `raw`, allocating only when decoding changes the bytes.
     #[must_use]
     pub fn percent_decode(raw: &str) -> Cow<'_, str> {
@@ -694,5 +830,23 @@ mod tests {
     fn percent_decode_stub_borrows() {
         let cow = Url::percent_decode("abc");
         assert!(matches!(cow, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn origin_https_omits_default_port() {
+        let url = Url::parse("https://example.com:443/foo").unwrap();
+        assert_eq!(url.origin().serialized(), "https://example.com");
+    }
+
+    #[test]
+    fn origin_blob_https() {
+        let url = Url::parse("blob:https://example.com:443/").unwrap();
+        assert_eq!(url.origin().serialized(), "https://example.com");
+    }
+
+    #[test]
+    fn origin_blob_ftp_is_opaque() {
+        let url = Url::parse("blob:ftp://host/path").unwrap();
+        assert_eq!(url.origin().serialized(), "null");
     }
 }

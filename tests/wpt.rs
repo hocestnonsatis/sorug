@@ -55,11 +55,12 @@ struct TestCase {
     search: Option<String>,
     hash: Option<String>,
 
-    // --- ignored / optional WPT metadata ------------------------------------
+    /// WHATWG origin ASCII serialization (`"null"` or `"scheme://host[:port]"`).
     origin: Option<String>,
     comment: Option<String>,
     #[serde(default, rename = "relativeTo")]
     relative_to: Option<String>,
+    /// Stringification of `URL.searchParams` when present in the fixture.
     #[serde(default, rename = "searchParams")]
     search_params: Option<serde_json::Value>,
 }
@@ -184,6 +185,18 @@ fn assert_success_components(url: &Url, case: &TestCase) -> Result<(), String> {
         .strip_suffix(':')
         .ok_or_else(|| format!("WPT protocol missing trailing ':': {protocol:?}"))?;
     eq("scheme", url.scheme(), scheme)?;
+
+    if let Some(expected_origin) = case.origin.as_deref() {
+        eq("origin", &url.origin().serialized(), expected_origin)?;
+    }
+
+    if let Some(serde_json::Value::String(expected_sp)) = case.search_params.as_ref() {
+        eq(
+            "searchParams",
+            &url.search_params().serialize(),
+            expected_sp,
+        )?;
+    }
 
     Ok(())
 }

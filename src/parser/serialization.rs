@@ -34,6 +34,17 @@ impl<'a> SerializationBuf<'a> {
         }
     }
 
+    /// Start from an already-owned serialization prefix (e.g. URL setters).
+    ///
+    /// The borrow source is unused (`""`); all further writes go into `s`.
+    #[inline]
+    pub(crate) fn from_owned(s: String) -> SerializationBuf<'static> {
+        SerializationBuf {
+            source: "",
+            state: State::Owned(s),
+        }
+    }
+
     #[inline]
     pub(crate) fn as_str(&self) -> &str {
         match &self.state {
@@ -190,6 +201,16 @@ impl<'a> SerializationBuf<'a> {
         match self.state {
             State::Borrowed { len } => Backing::Borrowed(&self.source[..len]),
             State::Owned(s) => Backing::Owned(s),
+        }
+    }
+
+    /// Consume into an owned `String` (upgrades if still borrowed).
+    #[inline]
+    pub(crate) fn into_string(mut self) -> String {
+        self.upgrade_to_owned();
+        match self.state {
+            State::Owned(s) => s,
+            State::Borrowed { .. } => unreachable!("upgrade_to_owned left Borrowed"),
         }
     }
 }

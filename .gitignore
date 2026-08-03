@@ -72,3 +72,6 @@ fuzz/minimized/
 fuzz/repro/
 fuzz/tmp/
 fuzz/.tmp/
+node_modules/
+package-lock.json
+package.json
