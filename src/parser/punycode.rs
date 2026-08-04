@@ -246,7 +246,8 @@ fn needs_unicode_case_fold(c: char) -> bool {
 
 /// Minimal UTS #46 disallowed set covering WPT failures (noncharacters, spaces,
 /// replacement char, line/paragraph separators). Full UTS46 tables are
-/// intentionally not embedded — membership ranges live in `data/idna_ranges.txt`.
+/// intentionally not embedded — membership ranges are derived at build time
+/// from vendored UCD (`data/ucd/`) plus `data/idna_overlay.txt`.
 #[inline]
 fn is_disallowed_idna(c: char) -> bool {
     if is_disallowed_cp(c) {

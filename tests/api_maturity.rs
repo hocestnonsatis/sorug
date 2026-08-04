@@ -108,7 +108,8 @@ fn origin_display_and_ascii_alias() {
     assert_eq!(origin.serialized(), "https://example.com");
     assert_eq!(origin.ascii_serialization(), origin.serialized());
     assert_eq!(origin.to_string(), "https://example.com");
-    assert_eq!(Origin::Opaque.to_string(), "null");
+    assert_eq!(Origin::new_opaque().to_string(), "null");
+    assert_ne!(Origin::new_opaque(), Origin::new_opaque());
 }
 
 #[test]

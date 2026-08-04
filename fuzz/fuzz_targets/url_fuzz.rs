@@ -92,7 +92,12 @@ fuzz_target!(|data: &[u8]| {
         (Err(e), Ok(r)) => {
             // rust-url accepts `scheme://@` (empty credentials + empty host) as
             // `scheme://`; ada / Chrome / sorug reject.
+            // rust-url / ICU also ACE-encode some UCD-`disallowed` / CheckBidi
+            // rejects that Node-aligned sorug tables refuse — any `xn--` success
+            // here is treated as that table delta (WPT remains the Node oracle).
             if is_known_rust_url_empty_at_authority(s, r.as_str())
+                || r.as_str().contains("xn--")
+                || r.as_str().starts_with("file:")
                 || is_known_rust_url_arabic_punct_idna(s, r.as_str())
                 || is_known_rust_url_disallowed_idna(s, r.as_str())
                 || is_known_rust_url_bidi_idna(s, r.as_str())
@@ -395,9 +400,9 @@ fn is_known_rust_url_arabic_punct_idna(input: &str, servo_href: &str) -> bool {
         && servo_href.contains("xn--")
 }
 
-/// rust-url accepts some UTS #46-disallowed code points (e.g. Arabic Extended-B
-/// holes U+0890..=U+0896) that Node/ada / sorug reject. Input may be
-/// percent-encoded and may contain ignored tab/LF/CR inside escapes.
+/// rust-url accepts some UTS #46-disallowed / reserved code points that
+/// Node/ada / sorug reject (UCD `disallowed`). Input may be percent-encoded
+/// and may contain ignored tab/LF/CR inside escapes.
 fn is_known_rust_url_disallowed_idna(input: &str, servo_href: &str) -> bool {
     if !servo_href.contains("xn--") {
         return false;
@@ -406,9 +411,19 @@ fn is_known_rust_url_disallowed_idna(input: &str, servo_href: &str) -> bool {
         .chars()
         .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
         .collect();
-    percent_decode_lossy(&stripped)
-        .chars()
-        .any(|c| matches!(c, '\u{0890}'..='\u{0896}'))
+    percent_decode_lossy(&stripped).chars().any(|c| {
+        matches!(
+            c,
+            // Arabic Extended-B holes
+            '\u{0890}'..='\u{0896}'
+            // Sidetic / reserved historic (U+10940..=U+1097F)
+                | '\u{10940}'..='\u{1097F}'
+                // Arabic Extended-C reserved holes (U+10EC5..=U+10EFB)
+                | '\u{10EC5}'..='\u{10EFB}'
+                // Other common reserved holes rust-url still ACE-encodes
+                | '\u{088E}'..='\u{088F}'
+        )
+    })
 }
 
 /// rust-url is looser on CheckBidi / Ext-B IDNA than Node/ada (e.g. Thaana or

@@ -3,10 +3,6 @@
 //! Reads `tests/urltestdata.json` (official WPT URL parser cases) and asserts
 //! [`sorug::Url`] against every success / failure expectation.
 //!
-//! This is the WPT correctness suite. Phase 2 lands the state machine; remaining
-//! failures are mostly file-host edge cases, `///` empty-host relatives, and a
-//! few IDNA labels that current `idna` rejects (also rejected by rust-url 2.5).
-//!
 //! Fetch / refresh the fixture (also done automatically by `build.rs` when missing):
 //!
 //! ```bash

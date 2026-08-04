@@ -24,14 +24,14 @@
 
 ## Benchmarks
 
-Criterion, Linux, release profile (`lto = true`, `codegen-units = 1`). Lower is better (nanoseconds / parse). Measured **2026-08-04**.
+Criterion, Linux, release profile (`lto = true`, `codegen-units = 1`). Lower is better (nanoseconds / parse). Measured **2026-08-04** (0.4 prep; relative order unchanged from 0.3).
 
 | Workload | **sorug** | ada-url | servo/`url` |
 | --- | ---: | ---: | ---: |
-| Fast Path ASCII (`https://example.com/api/v1/users`) | 32.7 ns | **31.2 ns** | 96.5 ns |
-| Complex Query / Fragment | **55.6 ns** | 140 ns | 199 ns |
-| IDNA / Punycode | **190 ns** | 244 ns | 226 ns |
-| File Edge Case | **31.2 ns** | 91.7 ns | 126 ns |
+| Fast Path ASCII (`https://example.com/api/v1/users`) | 32.9 ns | **31.5 ns** | 106 ns |
+| Complex Query / Fragment | **56.0 ns** | 140 ns | 216 ns |
+| IDNA / Punycode | **196 ns** | 277 ns | 248 ns |
+| File Edge Case | **31.1 ns** | 95.0 ns | 129 ns |
 
 Reproduce locally:
 
@@ -134,13 +134,18 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 ## Current Status & Roadmap
 
-**Today (0.3.0 on crates.io)**
+**Today (0.4.0 on crates.io)**
 
 - Relative URL ops: `join` / `make_relative` / `path_segments` / `path_segments_mut` / `query_pairs(_mut)`.
-- Typed `Host` (+ `Host::parse`), rust-url-shaped getters (`authority`, `domain`, `port`, …), `Hash` / `Ord`, optional `serde` / `http`, `no_std` + `alloc`.
+- Typed `Host` (+ `Host::parse`), rust-url-shaped getters, `Hash` / `Ord`, optional `serde` / `http`, `no_std` + `alloc`.
+- **0.4:** `from_file_path` / `from_directory_path` / `to_file_path`, unique opaque origins (`Origin::new_opaque`), `set_ip_host` / `socket_addrs`, `SearchParams::sort`, `parse_with_params`.
 - IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD 16.0.0 + `data/idna_overlay.txt` (Node/WPT).
 - WPT parser: **891 / 891**; WPT setters: **278 / 278**.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug).
+
+**Breaking (0.3 → 0.4)**
+
+- [`Origin::Opaque`](https://docs.rs/sorug/latest/sorug/enum.Origin.html) is now `Opaque(OpaqueOrigin)` with unique nonces — distinct opaque origins no longer compare equal.
 
 **Next**
 
@@ -149,7 +154,7 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 **C FFI**
 
-Optional C bindings live in [`ffi/`](ffi/) (`sorug-ffi`, workspace member, not on crates.io yet). The main crate stays `forbid(unsafe_code)`; the FFI package is the C ABI boundary (`cdylib` / `staticlib`). See [`ffi/README.md`](ffi/README.md).
+Optional C bindings live in [`ffi/`](ffi/) (`sorug-ffi`, workspace member, **not** on crates.io). Prebuilt `cdylib` / `staticlib` + `sorug.h` ship on [GitHub Releases](https://github.com/hocestnonsatis/sorug/releases). The main crate stays `forbid(unsafe_code)`. See [`ffi/README.md`](ffi/README.md).
 
 **Not goals (for now)**
 

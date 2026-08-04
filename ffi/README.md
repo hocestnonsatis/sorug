@@ -4,6 +4,9 @@ C ABI for [sorug](https://github.com/hocestnonsatis/sorug). The main Rust crate 
 `forbid(unsafe_code)`; this package is the intentional `unsafe` boundary
 (`cdylib` + `staticlib`).
 
+Not published to crates.io — consume via this repository or [GitHub Release](https://github.com/hocestnonsatis/sorug/releases)
+prebuilt archives (`sorug-ffi-<platform>.tar.gz` / `.zip` with `sorug.h`).
+
 ## Build
 
 From the repository root (Cargo workspace):
@@ -31,6 +34,20 @@ int main(void) {
     sorug_href(url, &href, &len);
     fwrite(href, 1, len, stdout);
     putchar('\n');
+
+    /* Mutating setters invalidate prior getter pointers. */
+    sorug_set_pathname(url, "/b", 2);
+    sorug_href(url, &href, &len);
+    fwrite(href, 1, len, stdout);
+    putchar('\n');
+
+    SorugUrl *joined = sorug_join(url, "c", 1);
+    if (joined) {
+        sorug_href(joined, &href, &len);
+        fwrite(href, 1, len, stdout);
+        putchar('\n');
+        sorug_free(joined);
+    }
 
     sorug_free(url);
     return 0;

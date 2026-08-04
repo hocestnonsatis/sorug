@@ -14,10 +14,18 @@
 //!
 //! # Crate features
 //!
-//! - **`std`** (default): enables [`std::error::Error`] for [`ParseError`] and
-//!   `memchr`'s std backend.
+//! - **`std`** (default): enables [`std::error::Error`] for [`ParseError`],
+//!   `memchr`'s std backend, and file-path / socket helpers.
 //! - **`serde`**: serialize / deserialize [`Url`] as an href string.
 //! - **`http`**: convert between [`Url`] and [`http::Uri`] (implies `std`).
+//!
+//! # Migration from 0.3
+//!
+//! - [`Origin::Opaque`] now wraps [`OpaqueOrigin`]; use [`Origin::new_opaque`].
+//!   Distinct opaque origins no longer compare equal.
+//! - New (`std`): [`Url::from_file_path`], [`Url::from_directory_path`],
+//!   [`Url::to_file_path`], [`Url::set_ip_host`], [`Url::socket_addrs`].
+//! - [`SearchParams::sort`], [`Url::parse_with_params`].
 //!
 //! # Migration from 0.2
 //!
@@ -48,6 +56,19 @@ mod parser;
 mod path_segments;
 mod query_pairs;
 mod search_params;
+
+#[cfg(all(
+    feature = "std",
+    any(
+        unix,
+        windows,
+        target_os = "redox",
+        target_os = "wasi",
+        target_os = "hermit"
+    )
+))]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+mod file_path;
 
 #[cfg(feature = "http")]
 #[cfg_attr(docsrs, doc(cfg(feature = "http")))]
@@ -217,18 +238,25 @@ impl UrlFlags {
 // Origin
 // ---------------------------------------------------------------------------
 
+/// Opaque identifier for non-tuple origins (`file:`, `data:`, failed `blob:`, …).
+///
+/// Two values compare equal only when they were produced from the same
+/// [`Origin::new_opaque`] call (or cloned). Matches rust-url / WHATWG uniqueness.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct OpaqueOrigin(usize);
+
 /// A URL [origin](https://url.spec.whatwg.org/#concept-url-origin): either an
 /// opaque origin or a `(scheme, host, port)` tuple.
 ///
-/// # Opaque equality
+/// # Opaque equality (0.4+)
 ///
-/// All [`Origin::Opaque`] values compare equal. The HTML / WHATWG model treats
-/// each opaque origin as unique; use this type for ASCII serialization and
-/// coarse checks, not fine-grained same-origin policy for opaque URLs.
+/// Each [`Origin::Opaque`] carries a unique [`OpaqueOrigin`] nonce. Distinct
+/// opaque origins do **not** compare equal (breaking change from 0.3, where all
+/// opaques were equal). ASCII serialization remains `"null"` for every opaque.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Origin {
     /// Globally unique / non-tuple origin (file, non-special, failed blob, …).
-    Opaque,
+    Opaque(OpaqueOrigin),
     /// Tuple origin of scheme, host serialization, and port (default applied).
     Tuple {
         scheme: String,
@@ -238,13 +266,21 @@ pub enum Origin {
 }
 
 impl Origin {
+    /// Creates a new opaque origin that is only equal to itself (and clones).
+    #[must_use]
+    pub fn new_opaque() -> Self {
+        use core::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        Self::Opaque(OpaqueOrigin(COUNTER.fetch_add(1, Ordering::SeqCst)))
+    }
+
     /// ASCII serialization of an origin (`"null"` or `"scheme://host[:port]"`).
     ///
     /// Default ports are omitted per the HTML ASCII serialization of an origin.
     #[must_use]
     pub fn serialized(&self) -> String {
         match self {
-            Self::Opaque => String::from("null"),
+            Self::Opaque(_) => String::from("null"),
             Self::Tuple { scheme, host, port } => {
                 if parser::default_port_for_scheme(scheme) == Some(*port) {
                     format!("{scheme}://{host}")
@@ -465,6 +501,34 @@ impl<'a> Url<'a> {
             fragment_start: self.fragment_start,
             flags: self.flags,
         }
+    }
+
+    /// Parse `input`, then append `iter` as urlencoded query pairs.
+    ///
+    /// Existing query parameters in `input` are kept; new pairs are appended.
+    pub fn parse_with_params<I, K, V>(
+        input: &'a str,
+        iter: I,
+    ) -> Result<Url<'static>, ParseError>
+    where
+        I: IntoIterator,
+        I::Item: core::borrow::Borrow<(K, V)>,
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        use core::borrow::Borrow;
+        let mut url = Self::parse(input)?.into_owned();
+        let existing = url.query().map(str::to_owned);
+        let mut params = match existing.as_deref() {
+            Some(q) => SearchParams::parse(q),
+            None => SearchParams::new(),
+        };
+        for pair in iter {
+            let (k, v) = pair.borrow();
+            params.append(k.as_ref(), v.as_ref());
+        }
+        url.set_search_params(&params);
+        Ok(url)
     }
 
     /// Parse `input` according to the WHATWG basic URL parser with no base URL.
@@ -937,7 +1001,46 @@ impl<'a> Url<'a> {
         self.as_str()
     }
 
+    /// Resolve this URL’s host and port to socket addresses.
+    ///
+    /// `default_port_number` is used when the URL has no port and no known
+    /// scheme default (see [`Self::port_or_known_default`]).
+    #[cfg(all(
+        feature = "std",
+        any(
+            unix,
+            windows,
+            target_os = "redox",
+            target_os = "wasi",
+            target_os = "hermit"
+        )
+    ))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+    pub fn socket_addrs(
+        &self,
+        default_port_number: impl FnOnce() -> Option<u16>,
+    ) -> std::io::Result<alloc::vec::Vec<std::net::SocketAddr>> {
+        use std::net::ToSocketAddrs;
+
+        fn io_result<T>(opt: Option<T>, message: &str) -> std::io::Result<T> {
+            opt.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, message))
+        }
+
+        let host = io_result(self.host_parsed(), "No host name in the URL")?;
+        let port = io_result(
+            self.port_or_known_default().or_else(default_port_number),
+            "No port number in the URL",
+        )?;
+        Ok(match host {
+            Host::Domain(domain) => (domain.as_ref(), port).to_socket_addrs()?.collect(),
+            Host::Ipv4(ip) => vec![(ip, port).into()],
+            Host::Ipv6(ip) => vec![(ip, port).into()],
+        })
+    }
+
     /// WHATWG [origin](https://url.spec.whatwg.org/#concept-url-origin) of this URL.
+    ///
+    /// Opaque results use a fresh [`Origin::new_opaque`] nonce each call.
     #[must_use]
     pub fn origin(&self) -> Origin {
         match self.scheme() {
@@ -947,15 +1050,15 @@ impl<'a> Url<'a> {
                 match Url::parse(self.path()) {
                     Ok(inner) => match inner.scheme() {
                         "http" | "https" | "file" => inner.origin(),
-                        _ => Origin::Opaque,
+                        _ => Origin::new_opaque(),
                     },
-                    Err(_) => Origin::Opaque,
+                    Err(_) => Origin::new_opaque(),
                 }
             }
             "ftp" | "http" | "https" | "ws" | "wss" => {
                 let host = match self.host() {
                     Some(h) => h.to_owned(),
-                    None => return Origin::Opaque,
+                    None => return Origin::new_opaque(),
                 };
                 let port = self
                     .port_u16()
@@ -968,7 +1071,7 @@ impl<'a> Url<'a> {
                 }
             }
             // file and everything else → opaque
-            _ => Origin::Opaque,
+            _ => Origin::new_opaque(),
         }
     }
 
@@ -1125,8 +1228,61 @@ impl TryFrom<String> for Url<'static> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn blank_url_has_no_host_or_query() {
+#[test]
+fn origin_opaque_unique() {
+    let a = Url::parse("data:text/plain,hi").unwrap().origin();
+    let b = Url::parse("data:text/plain,hi").unwrap().origin();
+    assert!(!a.is_tuple());
+    assert!(!b.is_tuple());
+    assert_ne!(a, b);
+    assert_eq!(a.serialized(), "null");
+}
+
+#[test]
+fn origin_tuple_equal() {
+    let a = Url::parse("https://example.com/a").unwrap().origin();
+    let b = Url::parse("https://example.com/b").unwrap().origin();
+    assert_eq!(a, b);
+}
+
+#[test]
+fn search_params_sort() {
+    let mut p = SearchParams::parse("b=2&a=1&b=3&a=0");
+    p.sort();
+    assert_eq!(p.serialize(), "a=1&a=0&b=2&b=3");
+}
+
+#[test]
+fn parse_with_params_appends() {
+    let url = Url::parse_with_params(
+        "https://example.net?dont=clobberme",
+        &[("lang", "rust"), ("browser", "servo")],
+    )
+    .unwrap();
+    assert_eq!(
+        url.as_str(),
+        "https://example.net/?dont=clobberme&lang=rust&browser=servo"
+    );
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn set_ip_host_and_socket_addrs() {
+    let mut url = Url::parse("http://example.com/").unwrap();
+    url.set_ip_host("127.0.0.1".parse().unwrap()).unwrap();
+    assert_eq!(url.host_str(), Some("127.0.0.1"));
+    assert_eq!(url.as_str(), "http://127.0.0.1/");
+
+    let addrs = url.socket_addrs(|| None).unwrap();
+    assert!(!addrs.is_empty());
+    assert_eq!(addrs[0].port(), 80);
+
+    let mut mail = Url::parse("mailto:a@b.com").unwrap();
+    assert!(mail.set_ip_host("127.0.0.1".parse().unwrap()).is_err());
+}
+
+#[test]
+fn blank_url_has_no_host_or_query() {
         let url = Url::blank();
         assert_eq!(url.scheme(), "");
         assert!(url.host().is_none());

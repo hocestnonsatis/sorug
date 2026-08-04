@@ -95,6 +95,32 @@ fn append_percent(out: &mut impl AppendBuf, byte: u8) {
     out.push(HEX[(byte & 0xf) as usize] as char);
 }
 
+/// Percent-encode raw bytes (file-path segments): non-ASCII always encoded;
+/// ASCII encoded when `encode` returns true.
+#[cfg(all(
+    feature = "std",
+    any(
+        unix,
+        windows,
+        target_os = "redox",
+        target_os = "wasi",
+        target_os = "hermit"
+    )
+))]
+pub(crate) fn percent_encode_bytes(
+    input: &[u8],
+    encode: impl Fn(u8) -> bool,
+    out: &mut impl AppendBuf,
+) {
+    for &b in input {
+        if !b.is_ascii() || encode(b) {
+            append_percent(out, b);
+        } else {
+            out.push(b as char);
+        }
+    }
+}
+
 /// UTF-8 percent-encode `input` with the given predicate; append to `out`.
 ///
 /// Fast path: if no byte needs encoding, bulk-append via `push_str`.

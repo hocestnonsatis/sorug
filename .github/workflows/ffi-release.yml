@@ -1,0 +1,102 @@
+name: FFI Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach artifacts to (e.g. v0.4.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: linux-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: macos-aarch64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: macos-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build sorug-ffi
+        run: cargo build -p sorug-ffi --release --target ${{ matrix.target }}
+      - name: Package artifacts (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="sorug-ffi-${{ matrix.artifact }}"
+          mkdir -p "$DEST"
+          cp ffi/include/sorug.h "$DEST/"
+          LIBDIR="target/${{ matrix.target }}/release"
+          if [[ -f "$LIBDIR/libsorug_ffi.a" ]]; then cp "$LIBDIR/libsorug_ffi.a" "$DEST/"; fi
+          if [[ -f "$LIBDIR/libsorug_ffi.so" ]]; then cp "$LIBDIR/libsorug_ffi.so" "$DEST/"; fi
+          if [[ -f "$LIBDIR/libsorug_ffi.dylib" ]]; then cp "$LIBDIR/libsorug_ffi.dylib" "$DEST/"; fi
+          (cd "$DEST" && sha256sum * > SHA256SUMS || shasum -a 256 * > SHA256SUMS)
+          tar -czf "${DEST}.tar.gz" "$DEST"
+      - name: Package artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="sorug-ffi-${{ matrix.artifact }}"
+          mkdir -p "$DEST"
+          cp ffi/include/sorug.h "$DEST/"
+          LIBDIR="target/${{ matrix.target }}/release"
+          cp "$LIBDIR/sorug_ffi.dll" "$DEST/" || true
+          cp "$LIBDIR/sorug_ffi.dll.lib" "$DEST/" 2>/dev/null || cp "$LIBDIR/sorug_ffi.lib" "$DEST/" || true
+          (cd "$DEST" && sha256sum * > SHA256SUMS || certutil -hashfile sorug.h SHA256 > SHA256SUMS)
+          7z a "${DEST}.zip" "$DEST"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sorug-ffi-${{ matrix.artifact }}
+          path: |
+            sorug-ffi-${{ matrix.artifact }}.tar.gz
+            sorug-ffi-${{ matrix.artifact }}.zip
+
+  upload:
+    name: Attach to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+          fail_on_unmatched_files: false

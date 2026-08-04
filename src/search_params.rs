@@ -120,6 +120,12 @@ impl SearchParams {
         &self.pairs
     }
 
+    /// Sort pairs by name (UTF-16 code units / byte order for UTF-8 ASCII names),
+    /// stable for equal names — WHATWG `URLSearchParams.sort`.
+    pub fn sort(&mut self) {
+        self.pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+
     /// Serialize to `application/x-www-form-urlencoded` (no leading `?`).
     #[must_use]
     pub fn serialize(&self) -> String {

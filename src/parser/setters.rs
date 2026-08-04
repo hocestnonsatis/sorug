@@ -249,6 +249,24 @@ impl Url<'_> {
         Ok(())
     }
 
+    /// Change the host to an IP address, skipping the host parser.
+    ///
+    /// If this URL cannot-be-a-base, do nothing and return `Err`.
+    #[cfg(feature = "std")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+    #[allow(clippy::result_unit_err)]
+    pub fn set_ip_host(&mut self, address: core::net::IpAddr) -> Result<(), ()> {
+        if self.cannot_be_a_base() {
+            return Err(());
+        }
+        let host = match address {
+            core::net::IpAddr::V4(a) => Host::Ipv4(a),
+            core::net::IpAddr::V6(a) => Host::Ipv6(a),
+        };
+        self.set_host_internal(host, None);
+        Ok(())
+    }
+
     /// Quirks `host` setter (host + optional port).
     #[allow(clippy::result_unit_err)]
     pub fn set_host(&mut self, host: &str) -> Result<(), ()> {
