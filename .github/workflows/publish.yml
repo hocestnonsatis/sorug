@@ -6,6 +6,12 @@ on:
       - "v*"
   workflow_dispatch:
 
+# crates.io Trusted Publishing (OIDC) — no long-lived CRATES_TOKEN.
+# Must match the Trusted Publisher config on
+# https://crates.io/crates/sorug/settings (workflow: publish.yml).
+# If that config lists a GitHub Environment name, add matching
+# `environment: <name>` under the job below.
+
 permissions:
   contents: read
 
@@ -13,12 +19,18 @@ jobs:
   publish:
     name: crates.io
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for OIDC → crates.io token exchange
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify package
         run: cargo publish --dry-run
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
       - name: Publish to crates.io
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_TOKEN }}
-        run: cargo publish --token "$CARGO_REGISTRY_TOKEN"
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish
