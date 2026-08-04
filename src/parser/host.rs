@@ -1,18 +1,57 @@
 //! Host parsing: domain (IDNA), opaque host, IPv4, IPv6.
 
-use std::borrow::Cow;
-use std::fmt::{self, Write};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use alloc::borrow::{Cow, ToOwned};
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::fmt::{self, Write};
+use core::net::{Ipv4Addr, Ipv6Addr};
+use core::str;
+
+use alloc::string::ToString;
 
 use super::percent::{in_c0_encode_set, percent_decode, utf8_percent_encode};
 use super::punycode;
 use crate::ParseError;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum Host<'a> {
+/// A parsed URL host: domain name, IPv4, or IPv6.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum Host<'a> {
+    /// Domain name (ASCII / ACE form after IDNA processing).
     Domain(Cow<'a, str>),
+    /// IPv4 address.
     Ipv4(Ipv4Addr),
+    /// IPv6 address.
     Ipv6(Ipv6Addr),
+}
+
+impl Host<'static> {
+    /// Parse a special-URL host (domain / IPv4 / IPv6).
+    ///
+    /// For non-special opaque hosts, use [`Self::parse_opaque`].
+    pub fn parse(input: &str) -> Result<Self, ParseError> {
+        Ok(match parse_host(input)? {
+            Host::Domain(d) => Host::Domain(Cow::Owned(d.into_owned())),
+            Host::Ipv4(a) => Host::Ipv4(a),
+            Host::Ipv6(a) => Host::Ipv6(a),
+        })
+    }
+
+    /// Parse an opaque host (non-special schemes).
+    pub fn parse_opaque(input: &str) -> Result<Self, ParseError> {
+        parse_opaque_host(input)
+    }
+}
+
+impl Host<'_> {
+    /// Clone into an owned [`Host<'static>`].
+    #[must_use]
+    pub fn to_owned(&self) -> Host<'static> {
+        match self {
+            Self::Domain(d) => Host::Domain(Cow::Owned(d.as_ref().to_owned())),
+            Self::Ipv4(a) => Host::Ipv4(*a),
+            Self::Ipv6(a) => Host::Ipv6(*a),
+        }
+    }
 }
 
 impl fmt::Display for Host<'_> {
@@ -50,11 +89,11 @@ pub(crate) fn parse_host(input: &str) -> Result<Host<'_>, ParseError> {
     let decoded_cow = percent_decode(input.as_bytes());
     match decoded_cow {
         Cow::Borrowed(bytes) => {
-            let decoded = std::str::from_utf8(bytes).map_err(|_| ParseError::Failure)?;
+            let decoded = str::from_utf8(bytes).map_err(|_| ParseError::Failure)?;
             domain_or_ipv4(decoded)
         }
         Cow::Owned(bytes) => {
-            let decoded = std::str::from_utf8(&bytes).map_err(|_| ParseError::Failure)?;
+            let decoded = str::from_utf8(&bytes).map_err(|_| ParseError::Failure)?;
             Ok(match domain_or_ipv4(decoded)? {
                 Host::Domain(d) => Host::Domain(Cow::Owned(d.into_owned())),
                 Host::Ipv4(a) => Host::Ipv4(a),
@@ -83,8 +122,8 @@ pub(crate) fn append_host(
 
     let decoded_cow = percent_decode(input.as_bytes());
     let decoded = match &decoded_cow {
-        Cow::Borrowed(bytes) => std::str::from_utf8(bytes).map_err(|_| ParseError::Failure)?,
-        Cow::Owned(bytes) => std::str::from_utf8(bytes).map_err(|_| ParseError::Failure)?,
+        Cow::Borrowed(bytes) => str::from_utf8(bytes).map_err(|_| ParseError::Failure)?,
+        Cow::Owned(bytes) => str::from_utf8(&bytes).map_err(|_| ParseError::Failure)?,
     };
     append_domain_or_ipv4(decoded, out)
 }

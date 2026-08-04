@@ -7,6 +7,10 @@
 //!    file host drop, path `^`/`{`/`}`/`` ` `` encoding, opaque trailing space).
 //! 3. Canonical `href()` must re-parse identically (round-trip).
 //!
+//! **Not** a Unicode range hunter: IDNA tables are derived from vendored UCD
+//! (`data/ucd/`) plus `data/idna_overlay.txt`. Host ACE mismatches should be
+//! treated as algorithm / overlay / UCD-version deltas — see `fuzz/README.md`.
+//!
 //! Panics are intentional crash signals for libFuzzer — do **not** wrap the
 //! parse path in `catch_unwind` or install a panic hook that swallows failures.
 //! `#[inline(always)]` on library code must not be used to hide logic errors;

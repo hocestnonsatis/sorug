@@ -31,9 +31,10 @@ pub(crate) mod serialization;
 pub(crate) mod setters;
 pub(crate) mod unicode_ranges;
 
+use alloc::borrow::{Cow, ToOwned};
+use alloc::string::String;
 use core::fmt::Write as _;
-use std::borrow::Cow;
-use std::str::Chars;
+use core::str::Chars;
 
 use self::host::{AppendedHost, Host, append_host, parse_host, parse_opaque_host};
 use self::percent::{
@@ -59,6 +60,7 @@ pub(crate) const FLAG_OPAQUE_PATH: u8 = 1 << 3;
 pub(crate) const FLAG_HAS_PASSWORD: u8 = 1 << 4;
 pub(crate) const FLAG_HOST_IPV4: u8 = 1 << 5;
 pub(crate) const FLAG_HOST_IPV6: u8 = 1 << 6;
+pub(crate) const FLAG_HOST_IDNA: u8 = 1 << 7;
 
 /// Parsed URL record with CoW serialization (rust-url layout).
 #[derive(Clone, Debug, Eq)]
@@ -978,6 +980,10 @@ impl<'b, 'i> Parser<'b, 'i> {
             }
         } else {
             flags |= host_flags_from_kind(host_kind);
+            let host_ser = &self.serialization.as_str()[host_start as usize..host_end as usize];
+            if host_ser.contains("xn--") {
+                flags |= FLAG_HOST_IDNA;
+            }
         }
         self.with_query_and_fragment(
             scheme_type,

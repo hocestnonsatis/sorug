@@ -24,9 +24,19 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Test
+      - name: Test (default features)
         run: cargo test --all-targets
+      - name: Test (all features)
+        run: cargo test --all-targets --all-features
+      - name: Check no_std + alloc
+        run: cargo check --no-default-features
+      - name: Check no_std + alloc + serde
+        run: cargo check --no-default-features --features serde
+      - name: Check http feature
+        run: cargo check --features http
+      - name: Test FFI crate
+        run: cargo test -p sorug-ffi
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --all-targets
+        run: cargo clippy --workspace --all-targets --all-features

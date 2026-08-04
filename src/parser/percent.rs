@@ -1,5 +1,9 @@
 //! Percent-encode sets from the WHATWG URL Standard.
 
+use alloc::borrow::Cow;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use super::scan::find_first_encode;
 
 /// Minimal append surface shared by [`String`] and the CoW serialization buffer.
@@ -74,13 +78,11 @@ pub(crate) fn in_userinfo_encode_set(c: u8) -> bool {
 
 /// Path segment encode set (+ `%` so existing sequences are re-encoded when needed by callers).
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn in_path_segment_encode_set(c: u8) -> bool {
     in_path_encode_set(c) || c == b'/' || c == b'%'
 }
 
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn in_special_path_segment_encode_set(c: u8) -> bool {
     in_path_segment_encode_set(c) || c == b'\\'
 }
@@ -168,9 +170,9 @@ pub(crate) fn append_fragment(segment: &str, out: &mut impl AppendBuf) {
 }
 
 /// Decode percent-encoded bytes; invalid sequences are left as literal bytes.
-pub(crate) fn percent_decode(input: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+pub(crate) fn percent_decode(input: &[u8]) -> Cow<'_, [u8]> {
     if memchr::memchr(b'%', input).is_none() {
-        return std::borrow::Cow::Borrowed(input);
+        return Cow::Borrowed(input);
     }
     let mut out = Vec::with_capacity(input.len());
     let mut i = 0;
@@ -185,7 +187,7 @@ pub(crate) fn percent_decode(input: &[u8]) -> std::borrow::Cow<'_, [u8]> {
         out.push(input[i]);
         i += 1;
     }
-    std::borrow::Cow::Owned(out)
+    Cow::Owned(out)
 }
 
 #[inline]

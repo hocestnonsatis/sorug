@@ -1,13 +1,15 @@
 //! [`application/x-www-form-urlencoded`](https://url.spec.whatwg.org/#application/x-www-form-urlencoded)
 //! parse / serialize and a WHATWG-style [`SearchParams`] collection.
 
+use alloc::borrow::{Cow, ToOwned};
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::fmt;
-use std::borrow::Cow;
 
 use crate::parser::percent::percent_decode;
 
 /// A list of name/value pairs in `application/x-www-form-urlencoded` syntax.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct SearchParams {
     pairs: Vec<(String, String)>,
 }
@@ -150,6 +152,59 @@ impl<'a> FromIterator<(&'a str, &'a str)> for SearchParams {
     }
 }
 
+impl IntoIterator for SearchParams {
+    type Item = (String, String);
+    type IntoIter = alloc::vec::IntoIter<(String, String)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.pairs.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a SearchParams {
+    type Item = (&'a str, &'a str);
+    type IntoIter = SearchParamsIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SearchParamsIter {
+            inner: self.pairs.iter(),
+        }
+    }
+}
+
+/// Iterator over borrowed `(name, value)` pairs from [`SearchParams`].
+#[derive(Clone, Debug)]
+pub struct SearchParamsIter<'a> {
+    inner: core::slice::Iter<'a, (String, String)>,
+}
+
+impl<'a> Iterator for SearchParamsIter<'a> {
+    type Item = (&'a str, &'a str);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl ExactSizeIterator for SearchParamsIter<'_> {}
+
+impl Extend<(String, String)> for SearchParams {
+    fn extend<T: IntoIterator<Item = (String, String)>>(&mut self, iter: T) {
+        self.pairs.extend(iter);
+    }
+}
+
+impl<'a> Extend<(&'a str, &'a str)> for SearchParams {
+    fn extend<T: IntoIterator<Item = (&'a str, &'a str)>>(&mut self, iter: T) {
+        self.pairs
+            .extend(iter.into_iter().map(|(k, v)| (k.to_owned(), v.to_owned())));
+    }
+}
+
 /// Parse `application/x-www-form-urlencoded` bytes into decoded name/value pairs.
 #[must_use]
 pub fn parse_urlencoded(input: &[u8]) -> Parse<'_> {
@@ -193,7 +248,7 @@ fn decode_urlencoded(input: &[u8]) -> Cow<'_, str> {
         },
     };
     match bytes {
-        Cow::Borrowed(b) => match std::str::from_utf8(b) {
+        Cow::Borrowed(b) => match core::str::from_utf8(b) {
             Ok(s) => Cow::Borrowed(s),
             Err(_) => Cow::Owned(String::from_utf8_lossy(b).into_owned()),
         },
@@ -253,7 +308,7 @@ fn append_urlencoded(bytes: &[u8], out: &mut String) {
                 i += 1;
             }
             // Unchanged bytes are a subset of ASCII (checked above).
-            if let Ok(s) = std::str::from_utf8(&bytes[start..i]) {
+            if let Ok(s) = core::str::from_utf8(&bytes[start..i]) {
                 out.push_str(s);
             }
         } else if b == b' ' {

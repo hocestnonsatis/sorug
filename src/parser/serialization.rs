@@ -8,6 +8,8 @@
 use core::fmt;
 use core::ops::{Deref, Range, RangeFrom, RangeTo};
 
+use alloc::string::String;
+
 use super::percent::AppendBuf;
 use crate::Backing;
 

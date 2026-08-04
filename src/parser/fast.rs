@@ -7,7 +7,8 @@
 
 use super::scan::{find_authority_end, find_last_at, find_query_or_hash};
 use super::{
-    FLAG_HAS_CREDENTIALS, FLAG_HAS_EMPTY_HOST, FLAG_HAS_PASSWORD, FLAG_SPECIAL, ParsedUrl,
+    FLAG_HAS_CREDENTIALS, FLAG_HAS_EMPTY_HOST, FLAG_HAS_PASSWORD, FLAG_HOST_IDNA, FLAG_SPECIAL,
+    ParsedUrl,
 };
 use crate::Backing;
 
@@ -180,6 +181,10 @@ fn try_fast_authority<'a>(
     let host = &host_region[..host_end_rel];
     if host.is_empty() || !host_is_clean_domain(host) || host_ends_in_a_number(host) {
         return cold_none();
+    }
+    // ACE labels always contain `-`; skip the scan on hyphen-free hosts.
+    if memchr::memchr(b'-', host).is_some() && memchr::memmem::find(host, b"xn--").is_some() {
+        flags |= FLAG_HOST_IDNA;
     }
 
     let host_start = host_region_start as u32;

@@ -361,7 +361,7 @@ mod swar_at_tests {
         let end = find_authority_end(s, true);
         let at = find_last_at(s, end);
         assert_eq!(end, 22);
-        assert_eq!(at, Some(6), "slice={:?}", std::str::from_utf8(&s[..end]));
+        assert_eq!(at, Some(6), "slice={:?}", core::str::from_utf8(&s[..end]));
     }
 
     #[test]

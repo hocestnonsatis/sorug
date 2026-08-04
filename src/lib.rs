@@ -11,7 +11,29 @@
 //! - **SIMD delimiter scans**: [`memchr`] on hot path segments.
 //! - **Strict WHATWG state machine**: transitions follow the
 //!   [URL Living Standard](https://url.spec.whatwg.org/#url-parsing).
+//!
+//! # Crate features
+//!
+//! - **`std`** (default): enables [`std::error::Error`] for [`ParseError`] and
+//!   `memchr`'s std backend.
+//! - **`serde`**: serialize / deserialize [`Url`] as an href string.
+//! - **`http`**: convert between [`Url`] and [`http::Uri`] (implies `std`).
+//!
+//! # Migration from 0.2
+//!
+//! - [`Url::join`], [`Url::make_relative`], [`Url::path_segments`],
+//!   [`Url::path_segments_mut`], [`Url::query_pairs`], [`Url::query_pairs_mut`],
+//!   [`Url::host_parsed`], [`AsRef<str>`], and [`core::str::FromStr`].
+//! - Optional features: `serde`, `http`; disable `std` with
+//!   `default-features = false` for `no_std` + `alloc`.
+//! - Public [`Host`] enum (`Domain` / `Ipv4` / `Ipv6`) with [`Host::parse`].
+//! - [`UrlFlags::HOST_IDNA`] is set when the serialized host contains an ACE
+//!   label (`xn--`).
+//! - Port API: [`Url::set_port`] takes `Option<u16>` (rust-url shape);
+//!   quirks/WPT string setter is [`Url::set_port_str`].
 
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 #![allow(
     clippy::cast_possible_truncation,
@@ -20,16 +42,40 @@
     clippy::range_plus_one
 )]
 
+extern crate alloc;
+
 mod parser;
+mod path_segments;
+mod query_pairs;
 mod search_params;
 
-pub use search_params::{SearchParams, parse_urlencoded, serialize_urlencoded};
+#[cfg(feature = "http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "http")))]
+mod http_impl;
+#[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+mod serde_impl;
 
+pub use parser::host::Host;
+pub use path_segments::PathSegmentsMut;
+pub use query_pairs::QueryPairsMut;
+pub use search_params::{SearchParams, SearchParamsIter, parse_urlencoded, serialize_urlencoded};
+
+#[cfg(feature = "http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "http")))]
+pub use http_impl::uri_to_url;
+
+use alloc::borrow::Cow;
+use alloc::format;
+use alloc::string::{String, ToString};
 use core::fmt;
 use core::ops::Range;
-use std::borrow::Cow;
 
 use parser::ParsedUrl;
+
+// `to_owned` / `to_string` on `str` require these traits under `no_std` + `alloc`.
+#[allow(unused_imports)]
+use alloc::borrow::ToOwned;
 
 // ---------------------------------------------------------------------------
 // WHATWG basic URL parser states
@@ -37,7 +83,10 @@ use parser::ParsedUrl;
 
 /// States of the WHATWG [basic URL parser](https://url.spec.whatwg.org/#url-parsing)
 /// state machine.
+///
+/// Exposed for debugging / advanced tooling; most consumers should not need this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[doc(hidden)]
 #[non_exhaustive]
 pub enum State {
     /// [scheme start state](https://url.spec.whatwg.org/#scheme-start-state)
@@ -107,6 +156,7 @@ impl fmt::Display for ParseError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ParseError {}
 
 // ---------------------------------------------------------------------------
@@ -169,6 +219,12 @@ impl UrlFlags {
 
 /// A URL [origin](https://url.spec.whatwg.org/#concept-url-origin): either an
 /// opaque origin or a `(scheme, host, port)` tuple.
+///
+/// # Opaque equality
+///
+/// All [`Origin::Opaque`] values compare equal. The HTML / WHATWG model treats
+/// each opaque origin as unique; use this type for ASCII serialization and
+/// coarse checks, not fine-grained same-origin policy for opaque URLs.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Origin {
     /// Globally unique / non-tuple origin (file, non-special, failed blob, …).
@@ -199,11 +255,24 @@ impl Origin {
         }
     }
 
+    /// Alias for [`Self::serialized`] (rust-url naming).
+    #[inline]
+    #[must_use]
+    pub fn ascii_serialization(&self) -> String {
+        self.serialized()
+    }
+
     /// Whether this is a tuple origin.
     #[inline]
     #[must_use]
     pub const fn is_tuple(&self) -> bool {
         matches!(self, Self::Tuple { .. })
+    }
+}
+
+impl fmt::Display for Origin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.serialized())
     }
 }
 
@@ -216,6 +285,12 @@ impl Origin {
 /// [`Borrowed`](Backing::Borrowed) is used when the trimmed input was already
 /// canonical and required no mutations. [`Owned`](Backing::Owned) is used after
 /// the first normalization (lowercasing, path shorten, percent-encoding, IDNA, …).
+///
+/// # Advanced mutation
+///
+/// [`ensure_owned`](Backing::ensure_owned) / [`as_mut_string`](Backing::as_mut_string)
+/// are crate-internal helpers. Mutating the buffer without updating `Url`
+/// component offsets will corrupt the record — use public setters instead.
 #[derive(Clone, Debug, Eq)]
 pub enum Backing<'a> {
     Borrowed(&'a str),
@@ -272,14 +347,14 @@ impl Backing<'_> {
     }
 
     /// Upgrade to [`Owned`](Backing::Owned) in place if currently borrowed.
-    pub fn ensure_owned(&mut self) {
+    pub(crate) fn ensure_owned(&mut self) {
         if let Self::Borrowed(s) = self {
             *self = Self::Owned((*s).to_owned());
         }
     }
 
     /// Mutable access to the owned serialization buffer (upgrades if needed).
-    pub fn as_mut_string(&mut self) -> &mut String {
+    pub(crate) fn as_mut_string(&mut self) -> &mut String {
         self.ensure_owned();
         match self {
             Self::Owned(s) => s,
@@ -416,6 +491,139 @@ impl<'a> Url<'a> {
         Ok(Self::from_parsed(parsed))
     }
 
+    /// Parse `input` with `self` as the base URL.
+    ///
+    /// The inverse of this is [`Url::make_relative`].
+    ///
+    /// # Notes
+    ///
+    /// - A trailing slash is significant. Without it, the last path component is
+    ///   treated as a file name and removed to obtain the directory used as the base.
+    /// - A scheme-relative special URL as input replaces everything in the base
+    ///   after the scheme.
+    /// - An absolute URL (with a scheme) as input replaces the whole base URL.
+    ///
+    /// The returned [`Url`] borrows from `input` when the serialization stays
+    /// canonical; call [`Url::into_owned`] if it must outlive a temporary input.
+    ///
+    /// # Errors
+    ///
+    /// See [`Url::parse`].
+    #[inline]
+    pub fn join<'b>(&self, input: &'b str) -> Result<Url<'b>, ParseError> {
+        Url::parse_with_base(input, Some(self))
+    }
+
+    /// Path segments after the leading `/`, or `None` for cannot-be-a-base URLs.
+    ///
+    /// Empty segments (for example in `file:////…`) are preserved.
+    #[inline]
+    #[must_use]
+    pub fn path_segments(&self) -> Option<core::str::Split<'_, char>> {
+        let path = self.path();
+        if self.cannot_be_a_base() || !path.starts_with('/') {
+            None
+        } else {
+            Some(path[1..].split('/'))
+        }
+    }
+
+    /// Mutable view of path segments, or `Err(())` if cannot-be-a-base.
+    ///
+    /// See [`PathSegmentsMut`].
+    #[allow(clippy::result_unit_err)]
+    pub fn path_segments_mut(&mut self) -> Result<PathSegmentsMut<'_, 'a>, ()> {
+        if self.cannot_be_a_base() {
+            Err(())
+        } else {
+            Ok(path_segments::new(self))
+        }
+    }
+
+    /// Create a relative reference from `self` (base) to `url`, if possible.
+    ///
+    /// Returns `None` when `self` cannot be a base, or when scheme, host, or
+    /// port differ. Username and password are ignored. Query and fragment are
+    /// taken only from `url`.
+    ///
+    /// This is the inverse of [`Url::join`].
+    #[must_use]
+    pub fn make_relative(&self, url: &Url<'_>) -> Option<String> {
+        if self.cannot_be_a_base() {
+            return None;
+        }
+
+        if self.scheme() != url.scheme()
+            || self.host() != url.host()
+            || self.port_u16() != url.port_u16()
+        {
+            return None;
+        }
+
+        let mut relative = String::new();
+
+        fn extract_path_filename(s: &str) -> (&str, &str) {
+            let last_slash_idx = s.rfind('/').unwrap_or(0);
+            let (path, filename) = s.split_at(last_slash_idx);
+            if filename.is_empty() {
+                (path, "")
+            } else {
+                (path, &filename[1..])
+            }
+        }
+
+        let (base_path, base_filename) = extract_path_filename(self.path());
+        let (url_path, url_filename) = extract_path_filename(url.path());
+
+        let mut base_path = base_path.split('/').peekable();
+        let mut url_path = url_path.split('/').peekable();
+
+        while base_path.peek().is_some() && base_path.peek() == url_path.peek() {
+            base_path.next();
+            url_path.next();
+        }
+
+        for base_path_segment in base_path {
+            if base_path_segment.is_empty() {
+                break;
+            }
+            if !relative.is_empty() {
+                relative.push('/');
+            }
+            relative.push_str("..");
+        }
+
+        for url_path_segment in url_path {
+            if !relative.is_empty() {
+                relative.push('/');
+            }
+            relative.push_str(url_path_segment);
+        }
+
+        if !relative.is_empty() || base_filename != url_filename {
+            if url_filename.is_empty() {
+                relative.push('/');
+            } else {
+                if !relative.is_empty() {
+                    relative.push('/');
+                }
+                relative.push_str(url_filename);
+            }
+        }
+
+        if let Some(query) = url.query() {
+            relative.push('?');
+            relative.push_str(query);
+        }
+
+        if let Some(fragment) = url.fragment() {
+            relative.push('#');
+            relative.push_str(fragment);
+        }
+
+        Some(relative)
+    }
+
     /// The serialization backing (borrowed or owned).
     #[inline]
     #[must_use]
@@ -447,8 +655,10 @@ impl<'a> Url<'a> {
         &self.as_str()[range.start as usize..range.end as usize]
     }
 
+    /// Whether the URL has an authority (`//` after the scheme).
     #[inline]
-    pub(crate) fn has_authority(&self) -> bool {
+    #[must_use]
+    pub fn has_authority(&self) -> bool {
         self.serialization.len() >= self.scheme_end as usize + 3
             && self.byte_at(self.scheme_end + 1) == b'/'
             && self.byte_at(self.scheme_end + 2) == b'/'
@@ -481,6 +691,8 @@ impl<'a> Url<'a> {
     }
 
     /// Host serialization without port (`None` when host is null).
+    ///
+    /// Alias: [`Self::host_str`].
     #[inline]
     #[must_use]
     pub fn host(&self) -> Option<&str> {
@@ -488,6 +700,54 @@ impl<'a> Url<'a> {
             return None;
         }
         Some(self.slice(self.host_start..self.host_end))
+    }
+
+    /// Alias for [`Self::host`] (rust-url naming).
+    #[inline]
+    #[must_use]
+    pub fn host_str(&self) -> Option<&str> {
+        self.host()
+    }
+
+    /// Domain name host, or `None` when host is null / IPv4 / IPv6.
+    #[inline]
+    #[must_use]
+    pub fn domain(&self) -> Option<&str> {
+        if self.flags.contains(UrlFlags::HOST_IPV4) || self.flags.contains(UrlFlags::HOST_IPV6) {
+            return None;
+        }
+        self.host()
+    }
+
+    /// Whether this URL uses a special scheme (`http`, `https`, `ws`, `wss`, `ftp`, `file`).
+    #[inline]
+    #[must_use]
+    pub const fn is_special(&self) -> bool {
+        self.flags.is_special()
+    }
+
+    /// Authority substring (`userinfo@host:port`), or `None` when there is no `//`.
+    #[inline]
+    #[must_use]
+    pub fn authority(&self) -> Option<&str> {
+        if !self.has_authority() {
+            return None;
+        }
+        Some(self.slice(self.scheme_end + 3..self.path_start))
+    }
+
+    /// Typed host (domain / IPv4 / IPv6), or `None` when host is null.
+    #[must_use]
+    pub fn host_parsed(&self) -> Option<Host<'_>> {
+        let host = self.host()?;
+        if self.flags.contains(UrlFlags::HOST_IPV6) {
+            let inner = host.strip_prefix('[')?.strip_suffix(']')?;
+            return Some(Host::Ipv6(inner.parse().ok()?));
+        }
+        if self.flags.contains(UrlFlags::HOST_IPV4) {
+            return Some(Host::Ipv4(host.parse().ok()?));
+        }
+        Some(Host::Domain(Cow::Borrowed(host)))
     }
 
     /// Username component (percent-encoded), or `""`.
@@ -503,6 +763,9 @@ impl<'a> Url<'a> {
     }
 
     /// Password component, or `""` when the password slot is absent.
+    ///
+    /// Prefer [`Self::password_opt`] when you need to distinguish “no password”
+    /// from an empty password.
     #[inline]
     #[must_use]
     pub fn password(&self) -> &str {
@@ -516,6 +779,27 @@ impl<'a> Url<'a> {
         }
     }
 
+    /// Password component if the URL has a password slot (`user:` / `user:pass`).
+    #[inline]
+    #[must_use]
+    pub fn password_opt(&self) -> Option<&str> {
+        if self.has_authority()
+            && (self.username_end as usize) < self.serialization.len()
+            && self.byte_at(self.username_end) == b':'
+        {
+            Some(self.slice(self.username_end + 1..self.host_start - 1))
+        } else {
+            None
+        }
+    }
+
+    /// Explicit port, if any (rust-url [`Url::port`](https://docs.rs/url/latest/url/struct.Url.html#method.port) shape).
+    #[inline]
+    #[must_use]
+    pub const fn port(&self) -> Option<u16> {
+        self.port_u16()
+    }
+
     #[inline]
     #[must_use]
     pub const fn port_u16(&self) -> Option<u16> {
@@ -527,6 +811,14 @@ impl<'a> Url<'a> {
                 Some(self.port as u16)
             }
         }
+    }
+
+    /// Explicit port, or the scheme’s known default (`http`→80, `https`→443, …).
+    #[inline]
+    #[must_use]
+    pub fn port_or_known_default(&self) -> Option<u16> {
+        self.port_u16()
+            .or_else(|| parser::default_port_for_scheme(self.scheme()))
     }
 
     /// WHATWG / WPT `port` getter: decimal string, or `""` when null.
@@ -691,6 +983,19 @@ impl<'a> Url<'a> {
         }
     }
 
+    /// Iterate decoded query name/value pairs (zero-copy when possible).
+    ///
+    /// Missing / empty query yields an empty iterator.
+    #[must_use]
+    pub fn query_pairs(&self) -> search_params::Parse<'_> {
+        parse_urlencoded(self.query().unwrap_or("").as_bytes())
+    }
+
+    /// Mutate query pairs; on drop the URL query is rewritten.
+    pub fn query_pairs_mut(&mut self) -> QueryPairsMut<'_, 'a> {
+        query_pairs::new(self)
+    }
+
     /// Replace the query from an iterator of name/value pairs (urlencoded).
     ///
     /// An empty iterator clears the query (`set_query(None)`).
@@ -723,7 +1028,7 @@ impl<'a> Url<'a> {
     pub fn percent_decode(raw: &str) -> Cow<'_, str> {
         let decoded = parser::percent::percent_decode(raw.as_bytes());
         match decoded {
-            Cow::Borrowed(b) => match std::str::from_utf8(b) {
+            Cow::Borrowed(b) => match core::str::from_utf8(b) {
                 Ok(s) => Cow::Borrowed(s),
                 Err(_) => Cow::Owned(String::from_utf8_lossy(b).into_owned()),
             },
@@ -761,9 +1066,58 @@ impl PartialEq for Url<'_> {
 
 impl Eq for Url<'_> {}
 
+impl core::hash::Hash for Url<'_> {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
+impl PartialOrd for Url<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Url<'_> {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
 impl fmt::Display for Url<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl AsRef<str> for Url<'_> {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl core::str::FromStr for Url<'static> {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Url::parse(s).map(Url::into_owned)
+    }
+}
+
+impl TryFrom<&str> for Url<'static> {
+    type Error = ParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Url::parse(s).map(Url::into_owned)
+    }
+}
+
+impl TryFrom<String> for Url<'static> {
+    type Error = ParseError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        Url::parse(&s).map(Url::into_owned)
     }
 }
 
@@ -848,5 +1202,139 @@ mod tests {
     fn origin_blob_ftp_is_opaque() {
         let url = Url::parse("blob:ftp://host/path").unwrap();
         assert_eq!(url.origin().serialized(), "null");
+    }
+
+    #[test]
+    fn join_resolves_relative() {
+        let base = Url::parse("https://example.com/dir/page").unwrap();
+        let joined = base.join("../other").unwrap();
+        assert_eq!(joined.as_str(), "https://example.com/other");
+    }
+
+    #[test]
+    fn join_trailing_slash_matters() {
+        let base = Url::parse("https://example.com/dir/page").unwrap();
+        assert_eq!(
+            base.join("x").unwrap().as_str(),
+            "https://example.com/dir/x"
+        );
+        let base_dir = Url::parse("https://example.com/dir/page/").unwrap();
+        assert_eq!(
+            base_dir.join("x").unwrap().as_str(),
+            "https://example.com/dir/page/x"
+        );
+    }
+
+    #[test]
+    fn path_segments_skips_leading_slash() {
+        let url = Url::parse("https://example.com/a/b/").unwrap();
+        let segs: Vec<_> = url.path_segments().unwrap().collect();
+        assert_eq!(segs, ["a", "b", ""]);
+    }
+
+    #[test]
+    fn path_segments_none_for_opaque() {
+        let url = Url::parse("mailto:user@example.com").unwrap();
+        assert!(url.cannot_be_a_base());
+        assert!(url.path_segments().is_none());
+    }
+
+    #[test]
+    fn make_relative_rust_url_examples() {
+        let base = Url::parse("https://example.net/a/b.html").unwrap();
+        let url = Url::parse("https://example.net/a/c.png").unwrap();
+        assert_eq!(base.make_relative(&url).as_deref(), Some("c.png"));
+
+        let base = Url::parse("https://example.net/a/b/").unwrap();
+        let url = Url::parse("https://example.net/a/b/c.png").unwrap();
+        assert_eq!(base.make_relative(&url).as_deref(), Some("c.png"));
+
+        let base = Url::parse("https://example.net/a/b/").unwrap();
+        let url = Url::parse("https://example.net/a/d/c.png").unwrap();
+        assert_eq!(base.make_relative(&url).as_deref(), Some("../d/c.png"));
+
+        let base = Url::parse("https://example.net/a/b.html?c=d").unwrap();
+        let url = Url::parse("https://example.net/a/b.html?e=f").unwrap();
+        assert_eq!(base.make_relative(&url).as_deref(), Some("?e=f"));
+    }
+
+    #[test]
+    fn make_relative_none_different_host() {
+        let base = Url::parse("https://a.example/x").unwrap();
+        let url = Url::parse("https://b.example/x").unwrap();
+        assert!(base.make_relative(&url).is_none());
+    }
+
+    #[test]
+    fn make_relative_roundtrip_join() {
+        let base = Url::parse("https://example.net/a/b/").unwrap();
+        let url = Url::parse("https://example.net/a/d/c.png").unwrap();
+        let relative = base.make_relative(&url).unwrap();
+        assert_eq!(base.join(&relative).unwrap().as_str(), url.as_str());
+    }
+
+    #[test]
+    fn path_segments_mut_rust_url_examples() {
+        let mut url = Url::parse("mailto:me@example.com").unwrap();
+        assert!(url.path_segments_mut().is_err());
+
+        let mut url = Url::parse("http://example.net/foo/index.html").unwrap();
+        url.path_segments_mut()
+            .unwrap()
+            .pop()
+            .push("img")
+            .push("2/100%.png");
+        assert_eq!(url.as_str(), "http://example.net/foo/img/2%2F100%25.png");
+
+        let mut url = Url::parse("https://github.com/servo/rust-url/").unwrap();
+        url.path_segments_mut().unwrap().clear().push("logout");
+        assert_eq!(url.as_str(), "https://github.com/logout");
+
+        let mut url = Url::parse("https://github.com/servo/rust-url/").unwrap();
+        url.path_segments_mut()
+            .unwrap()
+            .pop_if_empty()
+            .push("pulls");
+        assert_eq!(url.as_str(), "https://github.com/servo/rust-url/pulls");
+
+        let mut url = Url::parse("https://github.com/servo").unwrap();
+        url.path_segments_mut()
+            .unwrap()
+            .extend(["..", "rust-url", ".", "pulls"]);
+        assert_eq!(url.as_str(), "https://github.com/servo/rust-url/pulls");
+    }
+
+    #[test]
+    fn path_segments_mut_preserves_query() {
+        let mut url = Url::parse("https://example.com/a/b?x=1#h").unwrap();
+        url.path_segments_mut().unwrap().pop().push("c");
+        assert_eq!(url.as_str(), "https://example.com/a/c?x=1#h");
+    }
+
+    #[test]
+    fn from_str_and_as_ref() {
+        let url: Url<'static> = "https://example.com/p".parse().unwrap();
+        assert_eq!(url.as_ref(), "https://example.com/p");
+    }
+
+    #[test]
+    fn host_parsed_variants() {
+        let domain = Url::parse("https://example.com/").unwrap();
+        assert!(matches!(
+            domain.host_parsed(),
+            Some(Host::Domain(Cow::Borrowed("example.com")))
+        ));
+
+        let v4 = Url::parse("http://127.0.0.1/").unwrap();
+        assert!(matches!(v4.host_parsed(), Some(Host::Ipv4(_))));
+
+        let v6 = Url::parse("http://[::1]/").unwrap();
+        assert!(matches!(v6.host_parsed(), Some(Host::Ipv6(_))));
+    }
+
+    #[test]
+    fn host_idna_flag_set_for_ace() {
+        let url = Url::parse("https://xn--trke-2oa7j.com/").unwrap();
+        assert!(url.flags().contains(UrlFlags::HOST_IDNA));
     }
 }

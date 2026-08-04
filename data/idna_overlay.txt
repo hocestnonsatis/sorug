@@ -1,9 +1,10 @@
-# sorug IDNA / CheckBidi / CheckJoiners Unicode range tables
-# Format: [section] then one range per line: HEX or HEX..=HEX (inclusive).
-# Comments start with #. build.rs merges overlaps and emits static &[(u32, u32)].
-# Source of truth for CheckBidi/CheckJoiners tables; keep ranges inclusive and disjoint.
+# sorug IDNA overlay — Node/ICU / WPT deltas on top of vendored UCD.
+# Merged by build.rs AFTER UCD derivation.
+# Grammar: same as legacy idna_ranges.txt; optional -HEX / -HEX..=HEX removes.
+#
+# Note: [bidi_ignored] here REPLACES the UCD NSM derive (build.rs clears UCD
+# first for this section) so Node CheckBidi quirks stay aligned.
 
-# Marks/NSM/Me ignored by CheckBidi (not strong R/L)
 [bidi_ignored]
 0300..=036F
 0483..=0489
@@ -324,17 +325,7 @@ FE20..=FE2F
 1E8D0..=1E8D6
 1E944..=1E94A
 
-# Arabic/Syriac Dual_Joining / Right_Joining letters (CheckJoiners)
-[joining_letters]
-0600..=06FF
-0710..=074A
-074D..=077F
-0860..=086A
-08A0..=08FF
-FB50..=FDFF
-FE70..=FEFF
 
-# Strong RTL non-letters (Bidi=R/AL, not alphabetic)
 [rtl_non_letters]
 05BE
 05C0
@@ -387,32 +378,7 @@ FBB2..=FBC2
 1ED01..=1ED3D
 
 # Strong RTL alphabetic script blocks (gate with is_alphabetic)
-[rtl_alphabetic]
-0590..=086A
-0870..=08FF
-FB1D..=FDFF
-FE70..=FEFF
-10800..=108AF
-108E0..=1093F
-10980..=10A9F
-10AC0..=10BAF
-10C00..=10C4F
-10C80..=10D3F
-10E80..=10EBF
-10F00..=10FFF
-1E800..=1E8DF
-1E900..=1E95F
 
-# EN/AN digits and separators valid as RTL-label trailers (non-ASCII)
-[bidi_numbers]
-0660..=0669
-066B..=066C
-06F0..=06F9
-102E1..=102FB
-10D30..=10D39
-10E60..=10E7E
-
-# Pre-Ext-B Arabic letters incompatible with Ext-B mix
 [legacy_arabic]
 0620..=064A
 066E..=066F
@@ -425,129 +391,41 @@ FE70..=FEFF
 08B6..=08C7
 
 # UTS #46 / fuzz disallowed code points (membership). Planes 4–13 + U+…FFFE/FFFF stay algorithmic.
-[disallowed]
-0080..=00A0
-0378..=0379
-0380..=0383
-038B
-038D
-03A2
-05C8..=05CF
-05FC
-0890..=0896
-1C8B..=1C8F
-200E..=200F
-2024..=2026
-2028..=202E
-2065..=2069
-2488..=249B
-3000
-33C2
-33C7
-33D8
-E000..=F8FF
-FDD0..=FDEF
-FE12..=FE13
-FE16
-FE19..=FE1F
-FE30
-FE47..=FE4C
-FE52..=FE53
-FE55..=FE56
-FE5F
-FFFD
 
-# Latin Ext / Greek / Cyrillic alphabetic blocks (gate with is_alphabetic)
-[ltr_letters]
-00C0..=024F
-0370..=04FF
-
-# Arabic Extended-B Lo letters (not Sk/Mn)
 [arabic_ext_b_letters]
 0870..=0887
 0889..=088F
 
 # Ext-A letters Node allows beside Ext-B
+
 [arabic_ext_b_compatible]
 08B5
 08C8..=08FF
 
 # U14 Ext-B / early Ext-A Mn era marks
+
 [arabic_ext_b_era_marks]
 0897..=089F
 08CA..=08D2
 
 # Ext-A letters allowed with era marks (subset of compatible)
+
 [arabic_ext_b_era_ok]
 08B5
 08C8..=08C9
 
 # Compatibility chars whose NFKC introduces SPACE
-[nfkc_via_space]
-00A8
-00AF
-00B4
-00B8
-02D8..=02DD
-037A
-0384..=0385
-1FBD
-1FBF..=1FC0
-1FFE
 
-# UTS #46 ignored (delete) during mapping
-[uts46_ignored]
-00AD
-034F
-115F..=1160
-17B4..=17B5
-180B..=180F
-200B
-2060..=2064
-206A..=206F
-3164
-FE00..=FE0F
-FEFF
-FFA0
-1BCA0..=1BCA3
-1D173..=1D17A
-E0100..=E01EF
+# --- UCD 16 disallowed, but Node/ICU corpus still encodes ---
+[disallowed]
+-088F
+-1ACF
 
-# Static membership: always needs UTS #46 map pass (before NFKC/case-fold fallback)
-[uts46_needs_map]
-00AA
-00BA
-00AD
-00B2..=00B3
-00B9
-00BC..=00BE
-01C4..=01CC
-0345
-034F
-03D0..=03D7
-03F0..=03F2
-03F4..=03F5
-115F..=1160
-13F8..=13FD
-17B4..=17B5
-180B..=180F
-1C80..=1C89
-2000..=200F
-2011
-202A..=202E
-203E
-2060..=209F
-2150..=2189
-3002
-3164
-AB70..=ABBF
-FE00..=FE0F
-FEFF
-FF01..=FF5E
-FF61
-FFA0
-1BCA0..=1BCA3
-1D173..=1D17A
-1D400..=1D433
-E0100..=E01EF
+# --- Bidi=R digits (not alphabetic; not EN/AN) ---
+[rtl_non_letters]
+1E950..=1E959
+
+# --- Reserved Ext-B letter still treated as RTL alphabetic by Node ---
+[rtl_alphabetic]
+088F
 

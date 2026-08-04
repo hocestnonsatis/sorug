@@ -8,8 +8,8 @@ By participating, you agree to uphold the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 1. **WHATWG compliance** — Behavior follows the [URL Living Standard](https://url.spec.whatwg.org/). WPT regressions are blockers.
 2. **Zero-copy by default** — Prefer borrowing the input serialization. Allocate only when the algorithm requires mutation or non-ASCII processing.
-3. **`forbid(unsafe_code)`** — Library code must not introduce `unsafe`. The crate enforces this via `[lints.rust] unsafe_code = "forbid"` in `Cargo.toml`. Do not add `#![allow(unsafe_code)]` or equivalent workarounds.
-4. **No bloat** — Avoid heavy Unicode / IDNA crates when a focused in-tree implementation suffices. Dependencies must earn their weight on the hot path.
+3. **`forbid(unsafe_code)`** — Library code in the main `sorug` crate must not introduce `unsafe`. The crate enforces this via `[lints.rust] unsafe_code = "forbid"` in `Cargo.toml`. Do not add `#![allow(unsafe_code)]` or equivalent workarounds in `sorug`. C ABI lives only in the separate workspace member [`ffi/`](ffi/) (`sorug-ffi`).
+4. **No bloat** — Avoid heavy Unicode / IDNA crates when a focused in-tree implementation suffices. Dependencies must earn their weight on the hot path. IDNA **membership** tables are generated at build time from vendored Unicode UCD files under [`data/ucd/`](data/ucd/) plus [`data/idna_overlay.txt`](data/idna_overlay.txt) (see [`scripts/refresh-ucd.sh`](scripts/refresh-ucd.sh)); do not add ICU/`idna`/`unicode-bidi` for that.
 
 Pull requests that trade these principles for micro-benchmarks will be declined.
 
@@ -50,6 +50,17 @@ cargo test --test comprehensive_validation
 
 All of the above must pass before a PR is mergeable. If you intentionally diverge from rust-url on a WPT-correct edge case, document it in the differential allowlist (see `tests/comprehensive_validation.rs`) and explain why in the PR.
 
+### IDNA tables / Unicode refresh
+
+Membership classifiers (`disallowed`, CheckBidi helpers, UTS #46 ignored/needs-map, …) are **not** hand-edited range lists. `build.rs` derives them from pinned files in `data/ucd/` and merges Node/WPT deltas from `data/idna_overlay.txt`.
+
+```bash
+./scripts/refresh-ucd.sh 16.0.0   # or another Unicode version
+cargo test --test wpt --test wpt_setters
+```
+
+Fuzzing (`fuzz/`) is for crash + differential invariants against rust-url — see [`fuzz/README.md`](fuzz/README.md). Do not treat corpus hits as a mandate to grow overlay ranges without a Node/WPT rationale.
+
 ## Benchmarks
 
 Criterion benches live in `benches/url_benchmark.rs` and compare sorug against ada-url and servo/`url`:
@@ -82,8 +93,8 @@ Guidelines:
 
 ## Pull request checklist
 
-- [ ] `cargo test` passes (including WPT).
-- [ ] No new `unsafe` and no lint overrides that weaken `forbid(unsafe_code)`.
+- [ ] `cargo test` / `cargo test --workspace` passes (including WPT and `sorug-ffi`).
+- [ ] No new `unsafe` in the main `sorug` crate and no lint overrides that weaken `forbid(unsafe_code)` there (FFI changes belong in `ffi/`).
 - [ ] Zero-copy / CoW invariants preserved for ASCII-canonical inputs.
 - [ ] Benchmarks run if the change touches the hot path; summarize deltas.
 - [ ] Public API changes are documented and called out (breaking changes must be explicit).

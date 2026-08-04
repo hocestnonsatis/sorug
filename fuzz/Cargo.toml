@@ -4,6 +4,9 @@ version = "0.0.0"
 publish = false
 edition = "2024"
 
+# Standalone workspace so cargo-fuzz is not pulled into the parent members.
+[workspace]
+
 [package.metadata]
 cargo-fuzz = true
 

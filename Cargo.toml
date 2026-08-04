@@ -1,6 +1,6 @@
 [package]
 name = "sorug"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Ultra-high-performance, zero-copy, WHATWG-compliant URL parser"
@@ -11,21 +11,41 @@ homepage = "https://github.com/hocestnonsatis/sorug"
 documentation = "https://docs.rs/sorug"
 publish = true
 keywords = ["url", "parser", "whatwg", "simd", "swar"]
-categories = ["parser-implementations", "network-programming"]
+categories = ["parser-implementations", "network-programming", "no-std"]
 exclude = [
     "memories.md",
     "target/",
+    "ffi/",
+    "fuzz/",
     "fuzz/corpus/",
     "fuzz/artifacts/",
     "fuzz/logs/",
     "fuzz/target/",
 ]
 
+[workspace]
+members = [".", "ffi"]
+exclude = ["fuzz"]
+resolver = "2"
+
+[features]
+default = ["std"]
+std = ["memchr/std"]
+serde = ["dep:serde"]
+# `http` crate requires `std` today.
+http = ["dep:http", "std"]
+
 [dependencies]
 # SIMD-accelerated single/multi-byte delimiter scanning (`:`, `/`, `?`, `#`, …)
-memchr = { version = "2.7", default-features = false, features = ["std"] }
+memchr = { version = "2.7", default-features = false }
 # UTS #46 requires NFC before Punycode (e.g. t + combining cedilla → ţ).
 unicode-normalization = { version = "0.1", default-features = false }
+serde = { version = "1", optional = true, default-features = false, features = ["alloc"] }
+http = { version = "1", optional = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

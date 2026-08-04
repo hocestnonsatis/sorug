@@ -7,6 +7,9 @@
 
 use core::fmt::Write as _;
 
+use alloc::borrow::{Cow, ToOwned};
+use alloc::string::String;
+
 use super::host::Host;
 use super::percent::{in_userinfo_encode_set, utf8_percent_encode};
 use super::serialization::SerializationBuf;
@@ -67,9 +70,7 @@ impl Url<'_> {
         // WHATWG: credentials or non-null port → cannot switch to file.
         // rust-url approximates with `has_authority()` (rejects all →file with `://`);
         // WPT only covers credential/port cases — follow the checklist.
-        if new_scheme_type.is_file()
-            && (self.includes_credentials() || self.port_u16().is_some())
-        {
+        if new_scheme_type.is_file() && (self.includes_credentials() || self.port_u16().is_some()) {
             return Err(());
         }
 
@@ -78,8 +79,7 @@ impl Url<'_> {
             return Err(());
         }
 
-        if !remaining.is_empty() || (self.host_is_null_or_empty() && new_scheme_type.is_special())
-        {
+        if !remaining.is_empty() || (self.host_is_null_or_empty() && new_scheme_type.is_special()) {
             return Err(());
         }
 
@@ -91,7 +91,9 @@ impl Url<'_> {
         let old_scheme_end = self.scheme_end;
         let new_scheme_end = to_u32(new_scheme.len()).map_err(|_| ())?;
         let adjust = |index: &mut u32| {
-            *index = index.wrapping_sub(old_scheme_end).wrapping_add(new_scheme_end);
+            *index = index
+                .wrapping_sub(old_scheme_end)
+                .wrapping_add(new_scheme_end);
         };
 
         self.scheme_end = new_scheme_end;
@@ -120,7 +122,7 @@ impl Url<'_> {
 
         // Drop the port if it is the default for the new scheme.
         let previous_port = self.port_u16();
-        let _ = self.set_port_opt(previous_port);
+        let _ = self.set_port(previous_port);
 
         Ok(())
     }
@@ -201,7 +203,9 @@ impl Url<'_> {
             let old_host_start = self.host_start;
             let new_host_start = to_u32(self.serialization.len()).map_err(|_| ())?;
             let adjust = |index: &mut u32| {
-                *index = index.wrapping_sub(old_host_start).wrapping_add(new_host_start);
+                *index = index
+                    .wrapping_sub(old_host_start)
+                    .wrapping_add(new_host_start);
             };
             self.host_start = new_host_start;
             adjust(&mut self.host_end);
@@ -254,7 +258,7 @@ impl Url<'_> {
         let scheme = self.scheme().to_owned();
         let scheme_type = SchemeType::from(scheme.as_str());
         if scheme_type == SchemeType::File && host.is_empty() {
-            self.set_host_internal(Host::Domain(std::borrow::Cow::Owned(String::new())), Some(None));
+            self.set_host_internal(Host::Domain(Cow::Owned(String::new())), Some(None));
             return Ok(());
         }
 
@@ -294,7 +298,7 @@ impl Url<'_> {
         }
         let scheme_type = SchemeType::from(self.scheme());
         if scheme_type == SchemeType::File && hostname.is_empty() {
-            self.set_host_internal(Host::Domain(std::borrow::Cow::Owned(String::new())), Some(None));
+            self.set_host_internal(Host::Domain(Cow::Owned(String::new())), Some(None));
             return Ok(());
         }
 
@@ -316,9 +320,11 @@ impl Url<'_> {
         Ok(())
     }
 
-    /// Quirks string port setter.
+    /// Quirks string port setter (WPT `port` attribute).
+    ///
+    /// For typed ports, prefer [`Self::set_port`].
     #[allow(clippy::result_unit_err)]
-    pub fn set_port(&mut self, port: &str) -> Result<(), ()> {
+    pub fn set_port_str(&mut self, port: &str) -> Result<(), ()> {
         if self.cannot_have_username_password_port() {
             return Err(());
         }
@@ -337,8 +343,10 @@ impl Url<'_> {
     }
 
     /// Change the port number (`None` clears). Same preconditions as quirks port.
+    ///
+    /// Default ports for the scheme are normalized to “null” (omitted in the href).
     #[allow(clippy::result_unit_err)]
-    pub fn set_port_opt(&mut self, mut port: Option<u16>) -> Result<(), ()> {
+    pub fn set_port(&mut self, mut port: Option<u16>) -> Result<(), ()> {
         if self.cannot_have_username_password_port() {
             return Err(());
         }
@@ -391,7 +399,7 @@ impl Url<'_> {
         let prefix = {
             let ser = self.serialization.as_mut_string();
             ser.truncate(truncate_at as usize);
-            std::mem::take(ser)
+            core::mem::take(ser)
         };
 
         let mut parser = Parser::for_setter(SerializationBuf::from_owned(prefix));
@@ -461,7 +469,7 @@ impl Url<'_> {
         if let Some(input) = query {
             let scheme_type = SchemeType::from(self.scheme());
             self.query_start = to_u32(self.serialization.len()).unwrap_or(Self::NONE);
-            let mut prefix = std::mem::take(self.serialization.as_mut_string());
+            let mut prefix = core::mem::take(self.serialization.as_mut_string());
             prefix.push('?');
             let mut parser = Parser::for_setter(SerializationBuf::from_owned(prefix));
             let _ = parser.parse_query(scheme_type, Input::new_trim_tab_and_newlines(input));
@@ -495,7 +503,7 @@ impl Url<'_> {
             self.fragment_start = to_u32(self.serialization.len()).unwrap_or(Self::NONE);
             let ser = self.serialization.as_mut_string();
             ser.push('#');
-            let prefix = std::mem::take(ser);
+            let prefix = core::mem::take(ser);
             let mut parser = Parser::for_setter(SerializationBuf::from_owned(prefix));
             parser.parse_fragment(Input::new_no_trim(input));
             *ser = parser.serialization.into_string();
@@ -549,9 +557,7 @@ impl Url<'_> {
         let start = self.fragment_start;
         debug_assert!(self.byte_at(start) == b'#');
         let fragment = self.as_str()[start as usize + 1..].to_owned();
-        self.serialization
-            .as_mut_string()
-            .truncate(start as usize);
+        self.serialization.as_mut_string().truncate(start as usize);
         self.fragment_start = Self::NONE;
         Some(fragment)
     }
@@ -566,7 +572,7 @@ impl Url<'_> {
         }
     }
 
-    fn take_after_path(&mut self) -> String {
+    pub(crate) fn take_after_path(&mut self) -> String {
         let i = if self.query_start != Self::NONE {
             self.query_start
         } else if self.fragment_start != Self::NONE {
@@ -577,6 +583,20 @@ impl Url<'_> {
         let after = self.as_str()[i as usize..].to_owned();
         self.serialization.as_mut_string().truncate(i as usize);
         after
+    }
+
+    pub(crate) fn restore_after_path(&mut self, old_after_path_position: u32, after_path: &str) {
+        let new_after_path_position = to_u32(self.serialization.len()).unwrap_or(u32::MAX);
+        let adjust = |index: &mut u32| {
+            if *index != Self::NONE {
+                *index = index
+                    .wrapping_sub(old_after_path_position)
+                    .wrapping_add(new_after_path_position);
+            }
+        };
+        adjust(&mut self.query_start);
+        adjust(&mut self.fragment_start);
+        self.serialization.as_mut_string().push_str(after_path);
     }
 
     fn strip_trailing_spaces_from_opaque_path(&mut self) {
@@ -622,7 +642,9 @@ impl Url<'_> {
                 self.path_start = new_path_start;
                 let adjust = |index: &mut u32| {
                     if *index != Self::NONE {
-                        *index = index.wrapping_sub(old_path_start).wrapping_add(new_path_start);
+                        *index = index
+                            .wrapping_sub(old_path_start)
+                            .wrapping_add(new_path_start);
                     }
                 };
                 adjust(&mut self.query_start);
@@ -669,6 +691,7 @@ impl Url<'_> {
         // Host flags
         self.flags.remove(UrlFlags::HOST_IPV4);
         self.flags.remove(UrlFlags::HOST_IPV6);
+        self.flags.remove(UrlFlags::HOST_IDNA);
         self.flags.remove(UrlFlags::HAS_EMPTY_HOST);
         match &host {
             Host::Domain(d) if d.is_empty() => {
@@ -676,7 +699,11 @@ impl Url<'_> {
             }
             Host::Ipv4(_) => self.flags.insert(UrlFlags::HOST_IPV4),
             Host::Ipv6(_) => self.flags.insert(UrlFlags::HOST_IPV6),
-            Host::Domain(_) => {}
+            Host::Domain(d) => {
+                if d.contains("xn--") {
+                    self.flags.insert(UrlFlags::HOST_IDNA);
+                }
+            }
         }
 
         if let Some(new_port) = opt_new_port {

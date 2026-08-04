@@ -111,7 +111,7 @@ fn apply_setter(url: &mut Url<'static>, attr: &str, value: &str) -> Result<(), S
             let _ = url.set_hostname(value);
         }
         "port" => {
-            let _ = url.set_port(value);
+            let _ = url.set_port_str(value);
         }
         "pathname" => url.set_pathname(value),
         "search" => url.set_search(value),
