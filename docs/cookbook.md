@@ -14,16 +14,16 @@ Short recipes for common integrations and migrating from servo/`url`. Full API:
 
 ```toml
 # default (std)
-sorug = "0.5"
+sorug = "0.6"
 
 # no_std + alloc
-sorug = { version = "0.5", default-features = false }
+sorug = { version = "0.6", default-features = false }
 
 # serde without std
-sorug = { version = "0.5", default-features = false, features = ["serde"] }
+sorug = { version = "0.6", default-features = false, features = ["serde"] }
 
 # http::Uri bridge
-sorug = { version = "0.5", features = ["http"] }
+sorug = { version = "0.6", features = ["http"] }
 ```
 
 ## Serde (`features = ["serde"]`)

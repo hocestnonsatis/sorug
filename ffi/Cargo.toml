@@ -1,6 +1,6 @@
 [package]
 name = "sorug-ffi"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.85"
 description = "C FFI bindings for the sorug WHATWG URL parser"
@@ -18,7 +18,7 @@ name = "sorug_ffi"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
-sorug = { path = "..", version = "0.5.0" }
+sorug = { path = "..", version = "0.6.0" }
 
 [lints.rust]
 # C ABI requires `unsafe`; the main `sorug` crate remains `forbid(unsafe_code)`.

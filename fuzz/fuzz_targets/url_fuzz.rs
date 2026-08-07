@@ -417,8 +417,9 @@ fn is_known_rust_url_disallowed_idna(input: &str, servo_href: &str) -> bool {
             '\u{0890}'..='\u{0896}'
             // Sidetic / reserved historic (U+10940..=U+1097F)
                 | '\u{10940}'..='\u{1097F}'
-                // Arabic Extended-C reserved holes (U+10EC5..=U+10EFB)
-                | '\u{10EC5}'..='\u{10EFB}'
+                // Arabic Extended-C reserved holes after U+10EC7 (U+10EC5..=U+10EC7
+                // are valid since Unicode 17; mix rules live in CheckBidi/Ext-C).
+                | '\u{10EC8}'..='\u{10EFB}'
                 // Other common reserved holes rust-url still ACE-encodes
                 | '\u{088E}'..='\u{088F}'
         )

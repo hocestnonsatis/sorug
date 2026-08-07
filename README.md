@@ -49,7 +49,7 @@ cargo add sorug
 
 ```toml
 [dependencies]
-sorug = "0.5"
+sorug = "0.6"
 ```
 
 ```rust
@@ -104,13 +104,13 @@ assert_eq!(url.search(), "?q=1&lang=tr");
 
 ```toml
 # no_std + alloc
-sorug = { version = "0.5", default-features = false }
+sorug = { version = "0.6", default-features = false }
 
 # with serde
-sorug = { version = "0.5", features = ["serde"] }
+sorug = { version = "0.6", features = ["serde"] }
 
 # with http::Uri bridge
-sorug = { version = "0.5", features = ["http"] }
+sorug = { version = "0.6", features = ["http"] }
 ```
 
 `http` feature example:
@@ -134,12 +134,12 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 ## Current Status & Roadmap
 
-**Today (0.5.0)**
+**Today (0.6.0)**
 
 - Relative URL ops: `join` / `make_relative` / `path_segments` / `path_segments_mut` / `query_pairs(_mut)`.
 - Typed `Host` (+ `Host::parse`), rust-url-shaped getters, `Hash` / `Ord`, optional `serde` / `http`, `no_std` + `alloc`.
 - File paths, unique opaque origins, `set_ip_host` / `socket_addrs`, `SearchParams` (incl. value-aware `has`/`delete`/`size`), `parse_with_params`.
-- IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD + `data/idna_overlay.txt` (Node/WPT).
+- IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD **17.0.0** + `data/idna_overlay.txt` (Node/WPT).
 - WPT parser: **891 / 891**; WPT setters: **278 / 278**.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug); recipes in [docs/cookbook.md](docs/cookbook.md).
 

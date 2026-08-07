@@ -390,6 +390,45 @@ fn label_fails_arabic_ext_b_mix(label: &str) -> bool {
     has_ext_b && has_incompatible
 }
 
+/// Arabic Extended-C letters that are UTS #46 `valid` (U+10EC2..=U+10EC4 since
+/// Unicode 16; U+10EC5..=U+10EC7 since Unicode 17). Node rejects mixing them with
+/// classic Arabic / other historic RTL (e.g. Old North Arabian), while allowing
+/// Ext-B / late Ext-A / LTR / ASCII companions.
+#[inline]
+fn is_arabic_ext_c_letter(c: char) -> bool {
+    matches!(c, '\u{10EC2}'..='\u{10EC7}')
+}
+
+fn label_fails_arabic_ext_c_mix(label: &str) -> bool {
+    let mut has_ext_c = false;
+    let mut has_incompatible = false;
+    for c in label.chars() {
+        if is_bidi_transparent(c) {
+            continue;
+        }
+        if is_arabic_ext_c_letter(c) {
+            has_ext_c = true;
+            continue;
+        }
+        if is_arabic_ext_b_letter(c)
+            || c == '\u{0888}'
+            || is_arabic_ext_b_compatible(c)
+            || is_bidi_number(c)
+            || c.is_ascii()
+            || is_ltr_letter(c)
+        {
+            continue;
+        }
+        if is_rtl_script(c) || is_legacy_arabic_letter(c) {
+            has_incompatible = true;
+        }
+        if has_ext_c && has_incompatible {
+            return true;
+        }
+    }
+    has_ext_c && has_incompatible
+}
+
 #[inline]
 fn is_arabic_ext_b_letter(c: char) -> bool {
     is_arabic_ext_b_letter_cp(c)
@@ -541,6 +580,9 @@ fn encode_domain_labels(mapped: &str, out: &mut impl AppendBuf) -> Result<(), ()
             return Err(());
         }
         if label_fails_arabic_ext_b_mix(label) {
+            return Err(());
+        }
+        if label_fails_arabic_ext_c_mix(label) {
             return Err(());
         }
         if label_fails_ext_b_era_mark_mix(label) {

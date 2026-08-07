@@ -4,7 +4,7 @@ Offline source for `build.rs` IDNA membership tables. **Do not fetch at compile 
 
 | File | Upstream |
 | --- | --- |
-| `UNICODE_VERSION` | Pin (currently **16.0.0**; bump via `refresh-ucd.sh`) |
+| `UNICODE_VERSION` | Pin (currently **17.0.0**; bump via `refresh-ucd.sh`) |
 | `IdnaMappingTable.txt` | `https://www.unicode.org/Public/idna/<ver>/IdnaMappingTable.txt` |
 | `DerivedBidiClass.txt` | `https://www.unicode.org/Public/<ver>/ucd/extracted/DerivedBidiClass.txt` |
 | `Scripts.txt` | `https://www.unicode.org/Public/<ver>/ucd/Scripts.txt` |

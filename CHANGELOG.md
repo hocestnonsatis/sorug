@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-07
+
+### Changed
+
+- IDNA membership tables refreshed to **Unicode UCD 17.0.0** (`./scripts/refresh-ucd.sh`).
+- Node-aligned Arabic Extended-C mix checks for newly-valid U+10EC5..=U+10EC7 (reject mixes with classic Arabic / historic RTL).
+
 ## [0.5.0] - 2026-08-07
 
 ### Added
@@ -79,7 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-crate Punycode / UTS #46; SWAR + `memchr` delimiter scans.
 - `forbid(unsafe_code)` on the main crate.
 
-[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/hocestnonsatis/sorug/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/hocestnonsatis/sorug/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/hocestnonsatis/sorug/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/hocestnonsatis/sorug/compare/v0.2.0...v0.3.0
