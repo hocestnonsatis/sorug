@@ -1550,7 +1550,6 @@ mod security_fast_path {
     }
 }
 
-
 #[cfg(test)]
 mod audit_unassigned_simple_identity {
     use super::*;
@@ -1576,5 +1575,3 @@ mod audit_unassigned_simple_identity {
         }
     }
 }
-
-

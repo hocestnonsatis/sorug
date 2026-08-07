@@ -1,0 +1,61 @@
+name: Fuzz long
+
+on:
+  schedule:
+    # Weekly Monday 05:00 UTC (after daily smoke)
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  long:
+    name: fuzz-long
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: url_fuzz
+            dict: url_dict.txt
+          - target: url_mutate_fuzz
+            dict: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "fuzz -> target"
+          key: fuzz-long-${{ matrix.target }}
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Long fuzz (${{ matrix.target }}, 30m)
+        working-directory: fuzz
+        run: |
+          if [ -n "${{ matrix.dict }}" ]; then
+            cargo +nightly fuzz run "${{ matrix.target }}" -- \
+              -max_total_time=1800 \
+              -max_len=4096 \
+              -rss_limit_mb=2048 \
+              -dict="${{ matrix.dict }}"
+          else
+            cargo +nightly fuzz run "${{ matrix.target }}" -- \
+              -max_total_time=1800 \
+              -max_len=4096 \
+              -rss_limit_mb=2048
+          fi
+      - name: Upload corpus (best-effort)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: |
+            fuzz/corpus/${{ matrix.target }}/
+            fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+          retention-days: 14

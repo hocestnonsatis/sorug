@@ -16,10 +16,10 @@ use std::path::{Path, PathBuf};
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::Url;
 use crate::parser::percent::{
     in_special_path_segment_encode_set, percent_decode, percent_encode_bytes,
 };
-use crate::Url;
 
 impl Url<'static> {
     /// Convert an absolute file path into a `file:` URL.

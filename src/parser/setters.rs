@@ -325,14 +325,13 @@ impl Url<'_> {
         if remaining.starts_with_char(':') {
             return Err(());
         }
-        if is_empty {
-            if scheme_type == SchemeType::SpecialNotFile
+        if is_empty
+            && (scheme_type == SchemeType::SpecialNotFile
                 || self.port_u16().is_some()
                 || !self.username().is_empty()
-                || !self.password().is_empty()
-            {
-                return Err(());
-            }
+                || !self.password().is_empty())
+        {
+            return Err(());
         }
         self.set_host_internal(host, None);
         Ok(())

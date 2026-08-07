@@ -35,7 +35,9 @@ int main(void) {
     fwrite(href, 1, len, stdout);
     putchar('\n');
 
-    /* Mutating setters invalidate prior getter pointers. */
+/* Mutating setters invalidate prior getter pointers. */
+    sorug_set_username(url, "alice", 5);
+    sorug_set_host(url, "api.example.com", 15);
     sorug_set_pathname(url, "/b", 2);
     sorug_href(url, &href, &len);
     fwrite(href, 1, len, stdout);

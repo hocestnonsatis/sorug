@@ -8,6 +8,10 @@
 //! - `file:` path / Windows-drive / empty-segment edge cases
 //! - Empty `@` authority rejections
 //!
+//! **Hygiene:** new stable differential findings from smoke/long fuzz belong here
+//! (minimized). Document rust-url-only divergences in the fuzz harness allowlist
+//! with a WPT/Node rationale — do not weaken sorug to match rust-url against WPT.
+//!
 //! **Oracle:** [`ada_url`] (Chromium/Node WHATWG). Success/failure and `href`
 //! must match ada. [`url`] (servo/rust-url) is checked where it agrees; known
 //! rust-url deviations are allowlisted (same class as the fuzz harness).

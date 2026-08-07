@@ -24,11 +24,11 @@
 
 ## Benchmarks
 
-Criterion, Linux, release profile (`lto = true`, `codegen-units = 1`). Lower is better (nanoseconds / parse). Measured **2026-08-04** (0.4 prep; relative order unchanged from 0.3).
+Criterion, Linux, release profile (`lto = true`, `codegen-units = 1`). Lower is better (nanoseconds / parse). Measured **2026-08-07** (0.5/0.6 prep; Fast Path ASCII now leads ada).
 
 | Workload | **sorug** | ada-url | servo/`url` |
 | --- | ---: | ---: | ---: |
-| Fast Path ASCII (`https://example.com/api/v1/users`) | 32.9 ns | **31.5 ns** | 106 ns |
+| Fast Path ASCII (`https://example.com/api/v1/users`) | **28.3 ns** | 31.9 ns | 97 ns |
 | Complex Query / Fragment | **56.0 ns** | 140 ns | 216 ns |
 | IDNA / Punycode | **196 ns** | 277 ns | 248 ns |
 | File Edge Case | **31.1 ns** | 95.0 ns | 129 ns |
@@ -49,7 +49,7 @@ cargo add sorug
 
 ```toml
 [dependencies]
-sorug = "0.3"
+sorug = "0.5"
 ```
 
 ```rust
@@ -104,13 +104,13 @@ assert_eq!(url.search(), "?q=1&lang=tr");
 
 ```toml
 # no_std + alloc
-sorug = { version = "0.3", default-features = false }
+sorug = { version = "0.5", default-features = false }
 
 # with serde
-sorug = { version = "0.3", features = ["serde"] }
+sorug = { version = "0.5", features = ["serde"] }
 
 # with http::Uri bridge
-sorug = { version = "0.3", features = ["http"] }
+sorug = { version = "0.5", features = ["http"] }
 ```
 
 `http` feature example:
@@ -134,23 +134,42 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 ## Current Status & Roadmap
 
-**Today (0.4.0 on crates.io)**
+**Today (0.5.0)**
 
 - Relative URL ops: `join` / `make_relative` / `path_segments` / `path_segments_mut` / `query_pairs(_mut)`.
 - Typed `Host` (+ `Host::parse`), rust-url-shaped getters, `Hash` / `Ord`, optional `serde` / `http`, `no_std` + `alloc`.
-- **0.4:** `from_file_path` / `from_directory_path` / `to_file_path`, unique opaque origins (`Origin::new_opaque`), `set_ip_host` / `socket_addrs`, `SearchParams::sort`, `parse_with_params`.
-- IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD 16.0.0 + `data/idna_overlay.txt` (Node/WPT).
+- File paths, unique opaque origins, `set_ip_host` / `socket_addrs`, `SearchParams` (incl. value-aware `has`/`delete`/`size`), `parse_with_params`.
+- IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD + `data/idna_overlay.txt` (Node/WPT).
 - WPT parser: **891 / 891**; WPT setters: **278 / 278**.
-- Docs: [docs.rs/sorug](https://docs.rs/sorug).
+- Docs: [docs.rs/sorug](https://docs.rs/sorug); recipes in [docs/cookbook.md](docs/cookbook.md).
 
 **Breaking (0.3 → 0.4)**
 
 - [`Origin::Opaque`](https://docs.rs/sorug/latest/sorug/enum.Origin.html) is now `Opaque(OpaqueOrigin)` with unique nonces — distinct opaque origins no longer compare equal.
 
-**Next**
+**Next** (toward `1.0`; no freeze yet)
 
-- Continue refining toward a future `1.0` (no API freeze yet).
-- Differential fuzzing against rust-url where intentional divergences are documented.
+- Keep WPT fixtures current via [`scripts/refresh-wpt.sh`](scripts/refresh-wpt.sh); differential fuzz vs rust-url with documented divergences; weekly long fuzz via [`.github/workflows/fuzz-long.yml`](.github/workflows/fuzz-long.yml).
+- Unicode UCD refresh when a new major is ready (`./scripts/refresh-ucd.sh`); see [data/ucd/README.md](data/ucd/README.md).
+- When API churn stays low: run the [1.0 freeze checklist](#10-freeze-checklist) below.
+
+### Semver and MSRV policy
+
+- **0.x:** Breaking changes allowed in minor bumps (`0.N → 0.N+1`) when called out in [CHANGELOG.md](CHANGELOG.md). Additive APIs may land in patch or minor.
+- **MSRV:** Declared in `Cargo.toml` as `rust-version` (currently **1.85**). MSRV bumps are **minor** in 0.x (documented in the changelog); CI verifies the declared toolchain.
+- **Features:** `std` (default), `serde`, `http` (implies `std`). Disabling `std` is supported (`no_std` + `alloc`).
+- **FFI:** `sorug-ffi` is **not** on crates.io; ABI may change with the workspace version. Prefer GitHub Release binaries pinned to a tag.
+
+### 1.0 freeze checklist
+
+Do **not** cut 1.0 until all boxes are true for a **sustained** low-churn period (no rush — product work continues on 0.x). Gate notes: [docs/api-audit.md](docs/api-audit.md).
+
+- [x] Public surface audit signed off: `Url<'a>` lifetime, `Backing` stays public/advanced, `State` stays `doc(hidden)`, `ParseError` stays two variants — [docs/api-audit.md](docs/api-audit.md) (2026-08-07).
+- [x] rust-url migration notes complete (`host` vs `host_parsed`, port setters, origins, lifetimes) — see [docs/cookbook.md](docs/cookbook.md).
+- [ ] WPT parser + setters green on current fixtures; fuzz smoke + weekly long fuzz green; no open `wpt-freshness` regressions — **sustained** period required (no rush).
+- [ ] CHANGELOG + docs.rs + Trusted Publishing ready for the freeze cut; FFI stays `publish = false` — verify again at freeze time.
+
+**Not goals for 1.0:** historical non-WHATWG quirk parity; trading `forbid(unsafe_code)` for micro-wins; adding ICU/`idna` crates; expanding `ParseError`; hiding `Backing`.
 
 **C FFI**
 
@@ -182,6 +201,11 @@ cargo bench                # Criterion vs ada-url and servo/url
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for policies, style, and review expectations.
+
+## Cookbook
+
+Integration snippets and rust-url migration: [docs/cookbook.md](docs/cookbook.md).
+1.0 freeze gate (no rush): [docs/1.0-gate.md](docs/1.0-gate.md).
 
 ## License
 

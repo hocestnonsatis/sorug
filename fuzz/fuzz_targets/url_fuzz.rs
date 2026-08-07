@@ -92,12 +92,11 @@ fuzz_target!(|data: &[u8]| {
         (Err(e), Ok(r)) => {
             // rust-url accepts `scheme://@` (empty credentials + empty host) as
             // `scheme://`; ada / Chrome / sorug reject.
-            // rust-url / ICU also ACE-encode some UCD-`disallowed` / CheckBidi
-            // rejects that Node-aligned sorug tables refuse — any `xn--` success
-            // here is treated as that table delta (WPT remains the Node oracle).
+            // IDNA / file leniency: only when input actually looks like that class
+            // (not a blanket catch-all on any servo href containing `xn--` / `file:`).
             if is_known_rust_url_empty_at_authority(s, r.as_str())
-                || r.as_str().contains("xn--")
-                || r.as_str().starts_with("file:")
+                || is_known_rust_url_idna_table_delta(s, r.as_str())
+                || is_known_rust_url_file_parse_leniency(s, r.as_str())
                 || is_known_rust_url_arabic_punct_idna(s, r.as_str())
                 || is_known_rust_url_disallowed_idna(s, r.as_str())
                 || is_known_rust_url_bidi_idna(s, r.as_str())
@@ -617,11 +616,39 @@ fn host_has_ace_label(href: &str) -> bool {
         .split_once(':')
         .map(|(h, _)| h)
         .unwrap_or(host);
-    let host = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')).unwrap_or(host);
-    host.split('.').any(|label| {
-        let l = label.as_bytes();
-        l.len() >= 4 && l[..4].eq_ignore_ascii_case(b"xn--")
-    })
+    host.split('.')
+        .any(|label| label.len() >= 4 && label[..4].eq_ignore_ascii_case("xn--"))
+}
+
+/// rust-url / ICU ACE-encodes some hosts that Node-aligned sorug rejects.
+/// Require ACE in the *host* (not path) and an IDNA-looking input.
+fn is_known_rust_url_idna_table_delta(input: &str, servo_href: &str) -> bool {
+    if !host_has_ace_label(servo_href) {
+        return false;
+    }
+    input_suggests_idna(input)
+}
+
+fn input_suggests_idna(input: &str) -> bool {
+    if input.to_ascii_lowercase().contains("xn--") {
+        return true;
+    }
+    // Non-ASCII in the input is the common IDNA trigger (percent-encoded hosts
+    // are covered by the specific disallowed/bidi/zwnj allowlists).
+    input.chars().any(|c| !c.is_ascii())
+}
+
+/// rust-url is looser on some `file:` hosts / paths; only allow when *input*
+/// is also a `file:` URL (case-insensitive), not any servo `file:` href.
+fn is_known_rust_url_file_parse_leniency(input: &str, servo_href: &str) -> bool {
+    if !servo_href.as_bytes().starts_with(b"file:") {
+        return false;
+    }
+    let trimmed: String = input
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    trimmed.len() >= 5 && trimmed[..5].eq_ignore_ascii_case("file:")
 }
 
 /// rust-url sometimes keeps a path segment containing `|` through `..`

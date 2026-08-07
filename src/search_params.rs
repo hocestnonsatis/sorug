@@ -39,6 +39,13 @@ impl SearchParams {
         self.pairs.len()
     }
 
+    /// WHATWG `URLSearchParams.size` — alias of [`Self::len`].
+    #[inline]
+    #[must_use]
+    pub fn size(&self) -> usize {
+        self.len()
+    }
+
     /// Whether there are no pairs.
     #[inline]
     #[must_use]
@@ -65,10 +72,16 @@ impl SearchParams {
             .collect()
     }
 
-    /// Whether any pair has this name.
+    /// Whether any pair has this name (WHATWG `has(name)`).
     #[must_use]
     pub fn has(&self, name: &str) -> bool {
         self.pairs.iter().any(|(k, _)| k == name)
+    }
+
+    /// Whether any pair matches both `name` and `value` (WHATWG `has(name, value)`).
+    #[must_use]
+    pub fn has_value(&self, name: &str, value: &str) -> bool {
+        self.pairs.iter().any(|(k, v)| k == name && v == value)
     }
 
     /// Append a name/value pair (does not remove existing names).
@@ -101,6 +114,14 @@ impl SearchParams {
     pub fn delete(&mut self, name: &str) -> bool {
         let before = self.pairs.len();
         self.pairs.retain(|(k, _)| k != name);
+        self.pairs.len() != before
+    }
+
+    /// Remove pairs matching both `name` and `value` (WHATWG `delete(name, value)`).
+    /// Returns whether any were removed.
+    pub fn delete_value(&mut self, name: &str, value: &str) -> bool {
+        let before = self.pairs.len();
+        self.pairs.retain(|(k, v)| !(k == name && v == value));
         self.pairs.len() != before
     }
 
@@ -368,6 +389,11 @@ mod tests {
         let mut sp = SearchParams::new();
         sp.append("a", "1");
         sp.append("a", "2");
+        assert_eq!(sp.size(), 2);
+        assert!(sp.has_value("a", "1"));
+        assert!(sp.delete_value("a", "1"));
+        assert!(!sp.has_value("a", "1"));
+        assert!(sp.has("a"));
         assert!(sp.delete("a"));
         assert!(sp.is_empty());
     }

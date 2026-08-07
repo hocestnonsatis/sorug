@@ -15,11 +15,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const WPT_URL: &str =
-    "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/urltestdata.json";
+const WPT_URL: &str = "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/urltestdata.json";
 const WPT_PATH: &str = "tests/urltestdata.json";
-const WPT_SETTERS_URL: &str =
-    "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/setters_tests.json";
+const WPT_SETTERS_URL: &str = "https://raw.githubusercontent.com/web-platform-tests/wpt/master/url/resources/setters_tests.json";
 const WPT_SETTERS_PATH: &str = "tests/setters_tests.json";
 
 const UCD_DIR: &str = "data/ucd";
@@ -242,13 +240,13 @@ struct IdnaDerived {
     nfkc_via_space: Vec<(u32, u32)>,
 }
 
-/// WHATWG URL: UseSTD3ASCIIRules=false, Transitional_Processing=false.
+/// WHATWG URL: `UseSTD3ASCIIRules=false`, `Transitional_Processing=false`.
 ///
 /// - `disallowed` → reject
 /// - `ignored` → delete in map
 /// - `mapped` / `disallowed_STD3_mapped` → needs map pass
 /// - `disallowed_STD3_valid` → treat as valid (not disallowed)
-/// - `deviation` → non-transitional keep (ß, final sigma, ZWJ/ZWNJ) — not needs_map
+/// - `deviation` → non-transitional keep (ß, final sigma, ZWJ/ZWNJ) — not `needs_map`
 fn parse_idna_mapping_table(text: &str) -> IdnaDerived {
     let mut out = IdnaDerived {
         disallowed: Vec::new(),
@@ -263,9 +261,11 @@ fn parse_idna_mapping_table(text: &str) -> IdnaDerived {
             continue;
         }
         let fields: Vec<&str> = line.split(';').map(str::trim).collect();
-        if fields.len() < 2 {
-            panic!("IdnaMappingTable.txt:{}: expected status field: {raw}", lineno + 1);
-        }
+        assert!(
+            fields.len() >= 2,
+            "IdnaMappingTable.txt:{}: expected status field: {raw}",
+            lineno + 1
+        );
         let (lo, hi) = parse_ucd_codepoints(fields[0]).unwrap_or_else(|e| {
             panic!("IdnaMappingTable.txt:{}: {e}: {}", lineno + 1, fields[0]);
         });
@@ -306,7 +306,7 @@ fn mapping_starts_with_space(mapping: &str) -> bool {
         .is_some_and(|tok| matches!(tok.to_ascii_uppercase().as_str(), "0020" | "20"))
 }
 
-/// property_name → list of inclusive ranges.
+/// `property_name` → list of inclusive ranges.
 fn parse_property_file(text: &str) -> BTreeMap<String, Vec<(u32, u32)>> {
     let mut map: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
     for (lineno, raw) in text.lines().enumerate() {
@@ -315,9 +315,11 @@ fn parse_property_file(text: &str) -> BTreeMap<String, Vec<(u32, u32)>> {
             continue;
         }
         let fields: Vec<&str> = line.split(';').map(str::trim).collect();
-        if fields.len() < 2 {
-            panic!("UCD property file:{}: bad line: {raw}", lineno + 1);
-        }
+        assert!(
+            fields.len() >= 2,
+            "UCD property file:{}: bad line: {raw}",
+            lineno + 1
+        );
         let (lo, hi) = parse_ucd_codepoints(fields[0]).unwrap_or_else(|e| {
             panic!("UCD property file:{}: {e}: {}", lineno + 1, fields[0]);
         });
@@ -379,7 +381,7 @@ fn merge_overlay(tables: &mut BTreeMap<String, Vec<(u32, u32)>>, path: &Path) {
             *entry = merge_ranges(std::mem::take(entry));
         }
         if !removes.is_empty() {
-            *entry = subtract_ranges(std::mem::take(entry), merge_ranges(removes));
+            *entry = subtract_ranges(std::mem::take(entry), &merge_ranges(removes));
         }
     }
 }
@@ -436,7 +438,7 @@ fn parse_overlay_file(text: &str) -> BTreeMap<String, Vec<OverlayOp>> {
 }
 
 /// Subtract merged `remove` ranges from merged `base` (both inclusive, sorted).
-fn subtract_ranges(base: Vec<(u32, u32)>, remove: Vec<(u32, u32)>) -> Vec<(u32, u32)> {
+fn subtract_ranges(base: Vec<(u32, u32)>, remove: &[(u32, u32)]) -> Vec<(u32, u32)> {
     if base.is_empty() || remove.is_empty() {
         return base;
     }

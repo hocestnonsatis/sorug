@@ -64,15 +64,25 @@ int sorug_cannot_be_a_base(const SorugUrl *url);
 
 /*
  * Setters — mutate in place. Return 0 on success, -1 on failure / null url.
- * Invalidates any prior getter out_ptr into this handle.
+ * Invalidates any prior getter out_ptr into this handle (including origin cache).
+ * After any setter, discard previous out_ptr values and call getters again.
  */
 int sorug_set_href(SorugUrl *url, const char *value, size_t len);
 int sorug_set_protocol(SorugUrl *url, const char *value, size_t len);
+int sorug_set_username(SorugUrl *url, const char *value, size_t len);
+int sorug_set_password(SorugUrl *url, const char *value, size_t len);
+int sorug_set_host(SorugUrl *url, const char *value, size_t len);
 int sorug_set_hostname(SorugUrl *url, const char *value, size_t len);
 int sorug_set_port(SorugUrl *url, const char *value, size_t len);
 int sorug_set_pathname(SorugUrl *url, const char *value, size_t len);
 int sorug_set_search(SorugUrl *url, const char *value, size_t len);
 int sorug_set_hash(SorugUrl *url, const char *value, size_t len);
+
+/*
+ * File-path helpers (`from_file_path` / `to_file_path`) and SearchParams remain
+ * Rust-only for now — use the main `sorug` crate from Rust, or reimplement via
+ * pathname/search setters from C.
+ */
 
 #ifdef __cplusplus
 }

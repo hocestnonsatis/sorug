@@ -28,6 +28,8 @@ jobs:
         run: cargo test --all-targets
       - name: Test (all features)
         run: cargo test --all-targets --all-features
+      - name: Test no_std + alloc (lib)
+        run: cargo test --lib --no-default-features
       - name: Check no_std + alloc
         run: cargo check --no-default-features
       - name: Check no_std + alloc + serde
@@ -39,4 +41,44 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings -A clippy::pedantic
+
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - name: Check MSRV 1.85
+        run: cargo check --all-features
+      - name: Check MSRV no_std
+        run: cargo check --no-default-features
+
+  wasm:
+    name: wasm no_std
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm
+      - name: Check wasm32 no_std
+        run: cargo check --no-default-features --target wasm32-unknown-unknown
+      - name: Check wasm32 no_std + serde
+        run: cargo check --no-default-features --features serde --target wasm32-unknown-unknown
+
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --all-features

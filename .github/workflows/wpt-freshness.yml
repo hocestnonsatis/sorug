@@ -1,0 +1,73 @@
+name: WPT freshness
+
+on:
+  schedule:
+    # Mondays 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  refresh:
+    name: refresh-wpt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refresh fixtures
+        run: |
+          chmod +x scripts/refresh-wpt.sh
+          ./scripts/refresh-wpt.sh
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run WPT suites
+        id: wpt
+        continue-on-error: true
+        run: cargo test --test wpt --test wpt_setters
+      - name: Open issue on failure
+        if: steps.wpt.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `WPT freshness: suite failure (${new Date().toISOString().slice(0, 10)})`;
+            const body = [
+              'Scheduled WPT fixture refresh failed `cargo test --test wpt --test wpt_setters`.',
+              '',
+              '1. Inspect the workflow run logs.',
+              '2. Diff `tests/urltestdata.json` / `tests/setters_tests.json` against the previous commit.',
+              '3. Fix harness or algorithm gaps, then re-run `./scripts/refresh-wpt.sh`.',
+              '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join('\n');
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'wpt-freshness',
+            });
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['wpt-freshness'],
+              });
+            }
+      - name: Commit fixture updates when green
+        if: steps.wpt.outcome == 'success'
+        run: |
+          if git diff --quiet -- tests/urltestdata.json tests/setters_tests.json; then
+            echo "No fixture changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/urltestdata.json tests/setters_tests.json
+          git commit -m "chore: refresh WPT urltestdata and setters fixtures"
+          git push

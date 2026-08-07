@@ -183,7 +183,8 @@ fn try_fast_authority<'a>(
         return cold_none();
     }
     // ACE labels always contain `-`; skip the scan on hyphen-free hosts.
-    if memchr::memchr(b'-', host).is_some() && memchr::memmem::find(host, b"xn--").is_some() {
+    // Prefer a tight loop on short hosts (typical ASCII domains).
+    if host_has_hyphen(host) && memchr::memmem::find(host, b"xn--").is_some() {
         flags |= FLAG_HOST_IDNA;
     }
 
@@ -212,12 +213,12 @@ fn try_fast_authority<'a>(
 
 #[inline(always)]
 fn find_byte(bytes: &[u8], needle: u8) -> Option<usize> {
-    bytes.iter().position(|&c| c == needle)
+    memchr::memchr(needle, bytes)
 }
 
 #[inline(always)]
 fn rfind_byte(bytes: &[u8], needle: u8) -> Option<usize> {
-    bytes.iter().rposition(|&c| c == needle)
+    memchr::memrchr(needle, bytes)
 }
 
 #[inline(always)]
@@ -241,12 +242,31 @@ fn parse_u16_digits(bytes: &[u8]) -> Option<u16> {
 #[inline(always)]
 fn host_is_clean_domain(host: &[u8]) -> bool {
     for &c in host {
-        if !matches!(c, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-') {
+        if !DOMAIN_OK[c as usize] {
             return false;
         }
     }
     true
 }
+
+const fn build_domain_ok() -> [bool; 256] {
+    let mut t = [false; 256];
+    let mut c = b'a';
+    while c <= b'z' {
+        t[c as usize] = true;
+        c += 1;
+    }
+    c = b'0';
+    while c <= b'9' {
+        t[c as usize] = true;
+        c += 1;
+    }
+    t[b'.' as usize] = true;
+    t[b'-' as usize] = true;
+    t
+}
+
+const DOMAIN_OK: [bool; 256] = build_domain_ok();
 
 /// Fast `ends_in_a_number` for already-validated lowercase ASCII domains.
 #[inline(always)]
@@ -350,6 +370,44 @@ fn userinfo_is_clean(userinfo: &[u8]) -> bool {
 }
 
 #[inline(always)]
+fn host_has_hyphen(host: &[u8]) -> bool {
+    if host.len() <= 32 {
+        host.contains(&b'-')
+    } else {
+        memchr::memchr(b'-', host).is_some()
+    }
+}
+
+const fn build_path_seg_ok() -> [bool; 256] {
+    let mut t = [true; 256];
+    let mut i = 0usize;
+    while i < 0x20 {
+        t[i] = false;
+        i += 1;
+    }
+    i = 0x7f;
+    while i < 256 {
+        t[i] = false;
+        i += 1;
+    }
+    t[b' ' as usize] = false;
+    t[b'"' as usize] = false;
+    t[b'#' as usize] = false;
+    t[b'<' as usize] = false;
+    t[b'>' as usize] = false;
+    t[b'?' as usize] = false;
+    t[b'^' as usize] = false;
+    t[b'`' as usize] = false;
+    t[b'{' as usize] = false;
+    t[b'}' as usize] = false;
+    t[b'\\' as usize] = false;
+    t[b'|' as usize] = false;
+    t
+}
+
+const PATH_SEG_OK: [bool; 256] = build_path_seg_ok();
+
+#[inline(always)]
 fn validate_path_only(path: &[u8]) -> Option<()> {
     let mut i = 0;
     while i < path.len() {
@@ -359,24 +417,7 @@ fn validate_path_only(path: &[u8]) -> Option<()> {
         i += 1;
         let start = i;
         while i < path.len() && path[i] != b'/' {
-            let c = path[i];
-            if matches!(
-                c,
-                0x00..=0x1f
-                    | 0x7f..=0xff
-                    | b' '
-                    | b'"'
-                    | b'#'
-                    | b'<'
-                    | b'>'
-                    | b'?'
-                    | b'^'
-                    | b'`'
-                    | b'{'
-                    | b'}'
-                    | b'\\'
-                    | b'|' // file Windows drive `w|` → `w:` needs owned
-            ) {
+            if !PATH_SEG_OK[path[i] as usize] {
                 return None;
             }
             i += 1;

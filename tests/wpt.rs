@@ -29,7 +29,7 @@ enum Entry {
 
 /// A single WPT URL constructor / parser case.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)] // `comment` / `origin` / `relative_to` / `search_params` are format noise
+#[allow(dead_code)] // `comment` / `relative_to` are format noise when not asserted
 struct TestCase {
     input: String,
     /// Absolute base URL serialization, or `null` when parsing without a base.

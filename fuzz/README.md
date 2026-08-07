@@ -14,11 +14,32 @@ IDNA membership comes from vendored UCD (`data/ucd/`) + `data/idna_overlay.txt` 
 
 ## Run
 
+Daily CI smoke: [`.github/workflows/fuzz-smoke.yml`](../.github/workflows/fuzz-smoke.yml) (60s each target).
+
+Weekly long run: [`.github/workflows/fuzz-long.yml`](../.github/workflows/fuzz-long.yml) (30m each target; corpus artifacts uploaded).
+
+Local:
+
 ```bash
-cargo +nightly fuzz run url_fuzz -max_total_time=120 -dict=fuzz/url_dict.txt
+# From repo root — cargo-fuzz expects to run inside fuzz/
+cd fuzz
+cargo +nightly fuzz run url_fuzz -- -max_total_time=120 -max_len=4096 -dict=url_dict.txt
+cargo +nightly fuzz run url_mutate_fuzz -- -max_total_time=120 -max_len=4096
+
+# Multi-hour / 24h campaign (restarts on crash by default):
+# ./scripts/run_fuzz_24h.sh
+# FUZZ_TARGET=url_mutate_fuzz MAX_TOTAL_TIME=1800 ./scripts/run_fuzz_24h.sh
 ```
 
 `fuzz/` is its own Cargo workspace (`[workspace]` in `fuzz/Cargo.toml`); the parent crate `exclude`s it.
+
+Mutation target (`url_mutate_fuzz`) applies setters / `join` / path+query mutators and checks href round-trip invariants.
+
+## Hygiene
+
+- New differential findings → minimize → add a regression under `tests/fuzz_regressions.rs` when the case is stable.
+- Document rust-url divergences in the harness allowlist with a WPT/Node rationale — do not “fix” sorug to match rust-url when WPT disagrees.
+- Keep corpus under `fuzz/corpus/` local/CI artifacts; do not commit huge corpora.
 
 ## On mismatch
 

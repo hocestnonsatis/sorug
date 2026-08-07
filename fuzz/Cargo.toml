@@ -23,3 +23,10 @@ path = "fuzz_targets/url_fuzz.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "url_mutate_fuzz"
+path = "fuzz_targets/url_mutate_fuzz.rs"
+test = false
+doc = false
+bench = false

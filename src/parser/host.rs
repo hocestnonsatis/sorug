@@ -123,7 +123,7 @@ pub(crate) fn append_host(
     let decoded_cow = percent_decode(input.as_bytes());
     let decoded = match &decoded_cow {
         Cow::Borrowed(bytes) => str::from_utf8(bytes).map_err(|_| ParseError::Failure)?,
-        Cow::Owned(bytes) => str::from_utf8(&bytes).map_err(|_| ParseError::Failure)?,
+        Cow::Owned(bytes) => str::from_utf8(bytes).map_err(|_| ParseError::Failure)?,
     };
     append_domain_or_ipv4(decoded, out)
 }

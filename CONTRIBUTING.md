@@ -55,7 +55,7 @@ All of the above must pass before a PR is mergeable. If you intentionally diverg
 Membership classifiers (`disallowed`, CheckBidi helpers, UTS #46 ignored/needs-map, …) are **not** hand-edited range lists. `build.rs` derives them from pinned files in `data/ucd/` and merges Node/WPT deltas from `data/idna_overlay.txt`.
 
 ```bash
-./scripts/refresh-ucd.sh 16.0.0   # or another Unicode version
+./scripts/refresh-ucd.sh 17.0.0   # or another Unicode version (≤16 also works)
 cargo test --test wpt --test wpt_setters
 ```
 
@@ -63,7 +63,7 @@ Fuzzing (`fuzz/`) is for crash + differential invariants against rust-url — se
 
 ## Benchmarks
 
-Criterion benches live in `benches/url_benchmark.rs` and compare sorug against ada-url and servo/`url`:
+Criterion benches live in `benches/url_benchmark.rs` and compare sorug against ada-url and servo/`url` on **parse** hot paths. Mutation benches (`set_*`, `join`, SearchParams) are sorug-only trend lines.
 
 ```bash
 cargo bench --bench url_benchmark
@@ -74,6 +74,8 @@ Guidelines:
 - Prefer reporting **relative** change on the same machine over absolute nanoseconds in PR descriptions.
 - Do not regress Fast Path ASCII, Complex Query, or File Edge Case without a strong correctness rationale.
 - IDNA leads peers after the in-tree Punycode / direct-append path; large swings deserve investigation.
+- Hot-path changes to `src/parser/fast.rs`, `scan.rs`, or path-encode loops need Criterion evidence before merge — no `unsafe` micro-wins.
+- CI runs an **informational** Criterion job ([`.github/workflows/bench-informational.yml`](.github/workflows/bench-informational.yml)): `continue-on-error`, short samples, artifact upload. It must **not** gate merges (absolute ns are noisy across runners).
 
 ## Coding standards
 
@@ -82,9 +84,10 @@ Guidelines:
 - Run Clippy locally; pedantic lints are enabled at `warn`:
 
   ```bash
-  cargo clippy --all-targets -- -D warnings
+  cargo clippy --all-targets -- -D warnings -A clippy::pedantic
   ```
 
+  Pedantic lints stay at `warn` in `Cargo.toml` for local signal; CI denies non-pedantic warnings. Hot-path `#[inline(always)]` and state-machine symmetry are intentional.
 - Format with `rustfmt`:
 
   ```bash

@@ -1,0 +1,45 @@
+# Informational Criterion job — does not gate merges (absolute ns are noisy).
+
+name: Bench informational
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly Sunday 06:00 UTC
+    - cron: "0 6 * * 0"
+  pull_request:
+    paths:
+      - "src/parser/**"
+      - "benches/**"
+      - ".github/workflows/bench-informational.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_TARGET_DIR: target
+
+jobs:
+  criterion:
+    name: criterion-quick
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: bench
+      - name: Criterion (quick sample)
+        run: |
+          # Short sample counts — trend signal only; never fail the PR.
+          cargo bench --bench url_benchmark -- --sample-size 20 --warm-up-time 1 --measurement-time 2
+      - name: Upload Criterion reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-report
+          path: target/criterion/
+          if-no-files-found: ignore
+          retention-days: 14

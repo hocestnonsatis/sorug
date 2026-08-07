@@ -333,6 +333,9 @@ macro_rules! str_setter {
 
 str_setter!(sorug_set_protocol, set_protocol);
 str_setter!(sorug_set_hostname, set_hostname);
+str_setter!(sorug_set_host, set_host);
+str_setter!(sorug_set_username, set_username);
+str_setter!(sorug_set_password, set_password);
 str_setter!(sorug_set_port, set_port_str);
 
 /// Set pathname. Always succeeds for non-null handles (rust-url quirks shape).
@@ -512,16 +515,10 @@ mod tests {
             let origin = slice::from_raw_parts(optr.cast::<u8>(), olen);
             assert_eq!(origin, b"https://example.com");
 
-            assert_eq!(
-                sorug_set_pathname(joined, b"/z".as_ptr().cast(), 2),
-                0
-            );
+            assert_eq!(sorug_set_pathname(joined, b"/z".as_ptr().cast(), 2), 0);
             assert_eq!(read_str(sorug_pathname, joined), "/z");
 
-            assert_eq!(
-                sorug_set_search(joined, b"?x=1".as_ptr().cast(), 4),
-                0
-            );
+            assert_eq!(sorug_set_search(joined, b"?x=1".as_ptr().cast(), 4), 0);
             assert_eq!(read_str(sorug_search, joined), "?x=1");
 
             assert_eq!(sorug_set_hash(joined, b"#f".as_ptr().cast(), 2), 0);
@@ -531,12 +528,24 @@ mod tests {
                 sorug_set_hostname(joined, b"api.example.com".as_ptr().cast(), 15),
                 0
             );
-            assert_eq!(
-                sorug_hostname(joined, &raw mut optr, &raw mut olen),
-                1
-            );
+            assert_eq!(sorug_hostname(joined, &raw mut optr, &raw mut olen), 1);
             let host = slice::from_raw_parts(optr.cast::<u8>(), olen);
             assert_eq!(host, b"api.example.com");
+
+            assert_eq!(sorug_set_username(joined, b"alice".as_ptr().cast(), 5), 0);
+            assert_eq!(read_str(sorug_username, joined), "alice");
+            assert_eq!(sorug_set_password(joined, b"s3cret".as_ptr().cast(), 6), 0);
+            assert_eq!(read_str(sorug_password, joined), "s3cret");
+            assert_eq!(
+                sorug_set_host(joined, b"example.org:9000".as_ptr().cast(), 16),
+                0
+            );
+            assert_eq!(sorug_hostname(joined, &raw mut optr, &raw mut olen), 1);
+            let host2 = slice::from_raw_parts(optr.cast::<u8>(), olen);
+            assert_eq!(host2, b"example.org");
+            let mut port = 0u16;
+            assert_eq!(sorug_port(joined, &raw mut port), 1);
+            assert_eq!(port, 9000);
 
             sorug_free(joined);
             sorug_free(base);

@@ -19,6 +19,12 @@
 //! - **`serde`**: serialize / deserialize [`Url`] as an href string.
 //! - **`http`**: convert between [`Url`] and [`http::Uri`] (implies `std`).
 //!
+//! # Migration from 0.4
+//!
+//! Additive (non-breaking):
+//! - [`SearchParams::has_value`] / [`SearchParams::delete_value`] / [`SearchParams::size`]
+//! - FFI: `sorug_set_username` / `sorug_set_password` / `sorug_set_host`
+//!
 //! # Migration from 0.3
 //!
 //! - [`Origin::Opaque`] now wraps [`OpaqueOrigin`]; use [`Origin::new_opaque`].
@@ -26,6 +32,15 @@
 //! - New (`std`): [`Url::from_file_path`], [`Url::from_directory_path`],
 //!   [`Url::to_file_path`], [`Url::set_ip_host`], [`Url::socket_addrs`].
 //! - [`SearchParams::sort`], [`Url::parse_with_params`].
+//!
+//! # API stability (pre-1.0)
+//!
+//! - [`Url<'a>`] borrows the input serialization when it is already canonical;
+//!   call [`Url::into_owned`] before storing across mutations of the source.
+//! - [`Backing`] is public for advanced introspection; prefer [`Url::as_str`].
+//! - [`State`] is `#[doc(hidden)]` and `non_exhaustive` — not part of the
+//!   stability promise.
+//! - See the README **Semver and MSRV policy** and **1.0 freeze checklist**.
 //!
 //! # Migration from 0.2
 //!
@@ -506,10 +521,7 @@ impl<'a> Url<'a> {
     /// Parse `input`, then append `iter` as urlencoded query pairs.
     ///
     /// Existing query parameters in `input` are kept; new pairs are appended.
-    pub fn parse_with_params<I, K, V>(
-        input: &'a str,
-        iter: I,
-    ) -> Result<Url<'static>, ParseError>
+    pub fn parse_with_params<I, K, V>(input: &'a str, iter: I) -> Result<Url<'static>, ParseError>
     where
         I: IntoIterator,
         I::Item: core::borrow::Borrow<(K, V)>,
@@ -1228,61 +1240,61 @@ impl TryFrom<String> for Url<'static> {
 mod tests {
     use super::*;
 
-#[test]
-fn origin_opaque_unique() {
-    let a = Url::parse("data:text/plain,hi").unwrap().origin();
-    let b = Url::parse("data:text/plain,hi").unwrap().origin();
-    assert!(!a.is_tuple());
-    assert!(!b.is_tuple());
-    assert_ne!(a, b);
-    assert_eq!(a.serialized(), "null");
-}
+    #[test]
+    fn origin_opaque_unique() {
+        let a = Url::parse("data:text/plain,hi").unwrap().origin();
+        let b = Url::parse("data:text/plain,hi").unwrap().origin();
+        assert!(!a.is_tuple());
+        assert!(!b.is_tuple());
+        assert_ne!(a, b);
+        assert_eq!(a.serialized(), "null");
+    }
 
-#[test]
-fn origin_tuple_equal() {
-    let a = Url::parse("https://example.com/a").unwrap().origin();
-    let b = Url::parse("https://example.com/b").unwrap().origin();
-    assert_eq!(a, b);
-}
+    #[test]
+    fn origin_tuple_equal() {
+        let a = Url::parse("https://example.com/a").unwrap().origin();
+        let b = Url::parse("https://example.com/b").unwrap().origin();
+        assert_eq!(a, b);
+    }
 
-#[test]
-fn search_params_sort() {
-    let mut p = SearchParams::parse("b=2&a=1&b=3&a=0");
-    p.sort();
-    assert_eq!(p.serialize(), "a=1&a=0&b=2&b=3");
-}
+    #[test]
+    fn search_params_sort() {
+        let mut p = SearchParams::parse("b=2&a=1&b=3&a=0");
+        p.sort();
+        assert_eq!(p.serialize(), "a=1&a=0&b=2&b=3");
+    }
 
-#[test]
-fn parse_with_params_appends() {
-    let url = Url::parse_with_params(
-        "https://example.net?dont=clobberme",
-        &[("lang", "rust"), ("browser", "servo")],
-    )
-    .unwrap();
-    assert_eq!(
-        url.as_str(),
-        "https://example.net/?dont=clobberme&lang=rust&browser=servo"
-    );
-}
+    #[test]
+    fn parse_with_params_appends() {
+        let url = Url::parse_with_params(
+            "https://example.net?dont=clobberme",
+            &[("lang", "rust"), ("browser", "servo")],
+        )
+        .unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://example.net/?dont=clobberme&lang=rust&browser=servo"
+        );
+    }
 
-#[cfg(feature = "std")]
-#[test]
-fn set_ip_host_and_socket_addrs() {
-    let mut url = Url::parse("http://example.com/").unwrap();
-    url.set_ip_host("127.0.0.1".parse().unwrap()).unwrap();
-    assert_eq!(url.host_str(), Some("127.0.0.1"));
-    assert_eq!(url.as_str(), "http://127.0.0.1/");
+    #[cfg(feature = "std")]
+    #[test]
+    fn set_ip_host_and_socket_addrs() {
+        let mut url = Url::parse("http://example.com/").unwrap();
+        url.set_ip_host("127.0.0.1".parse().unwrap()).unwrap();
+        assert_eq!(url.host_str(), Some("127.0.0.1"));
+        assert_eq!(url.as_str(), "http://127.0.0.1/");
 
-    let addrs = url.socket_addrs(|| None).unwrap();
-    assert!(!addrs.is_empty());
-    assert_eq!(addrs[0].port(), 80);
+        let addrs = url.socket_addrs(|| None).unwrap();
+        assert!(!addrs.is_empty());
+        assert_eq!(addrs[0].port(), 80);
 
-    let mut mail = Url::parse("mailto:a@b.com").unwrap();
-    assert!(mail.set_ip_host("127.0.0.1".parse().unwrap()).is_err());
-}
+        let mut mail = Url::parse("mailto:a@b.com").unwrap();
+        assert!(mail.set_ip_host("127.0.0.1".parse().unwrap()).is_err());
+    }
 
-#[test]
-fn blank_url_has_no_host_or_query() {
+    #[test]
+    fn blank_url_has_no_host_or_query() {
         let url = Url::blank();
         assert_eq!(url.scheme(), "");
         assert!(url.host().is_none());
