@@ -39,7 +39,18 @@ Mutation target (`url_mutate_fuzz`) applies setters / `join` / path+query mutato
 
 - New differential findings → minimize → add a regression under `tests/fuzz_regressions.rs` when the case is stable.
 - Document rust-url divergences in the harness allowlist with a WPT/Node rationale — do not “fix” sorug to match rust-url when WPT disagrees.
+- **Inventory:** [`docs/differential-allowlist.md`](../docs/differential-allowlist.md) (keep in sync when adding `is_known_rust_url_*` helpers).
 - Keep corpus under `fuzz/corpus/` local/CI artifacts; do not commit huge corpora.
+
+## Ops (1.0 gate)
+
+| Cadence | Workflow | Expectation |
+| --- | --- | --- |
+| Daily | [`fuzz-smoke.yml`](../.github/workflows/fuzz-smoke.yml) | Both targets 60s, exit 0 |
+| Weekly | [`fuzz-long.yml`](../.github/workflows/fuzz-long.yml) | 30m each; triage uploaded corpus/artifacts |
+| Weekly | [`wpt-freshness.yml`](../.github/workflows/wpt-freshness.yml) | Green suites; no open `wpt-freshness` issues |
+
+When smoke fails: reproduce the artifact → Node/ada oracle → fix algorithm **or** allowlist with rationale → add `fuzz_regressions` case.
 
 ## On mismatch
 

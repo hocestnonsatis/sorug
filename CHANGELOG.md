@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Punycode ACE encoding no longer fails when the ASCII form exceeds 128 octets
+  or when a label has more than 256 code points. WHATWG `beStrict = false`
+  (Node/ada) accepts long labels; the former stack / code-point caps caused
+  daily fuzz-smoke differential panics on oversized IDN hosts. Typical labels
+  still encode on the stack; longer forms spill to the heap.
+- `Url::set_host("")` now rejects when a password is present (same as
+  `set_hostname`), avoiding unparseable `scheme://:password@` serializations.
+- `PathSegmentsMut::clear` drops the non-special anarchist `/.` marker so
+  cleared hrefs round-trip (`gi:/` instead of `gi:/./`).
+
+### Changed
+
+- Idempotent fast paths on `set_pathname` / `set_search` / `set_hash` when the
+  component is already equal (skip CoW + reparse).
+- `SchemeType` / default-port helpers live in `parser/scheme.rs` (behavior unchanged).
+
+### Docs
+
+- Differential allowlist inventory: `docs/differential-allowlist.md`.
+- Cookbook: reqwest/hyper notes + rust-url divergence pointer.
+- Unicode 18 refresh gate documented in `data/ucd/README.md` (not ready yet).
+
 ## [0.6.0] - 2026-08-07
 
 ### Changed

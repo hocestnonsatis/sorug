@@ -27,9 +27,12 @@ pub(crate) mod host;
 pub(crate) mod percent;
 pub(crate) mod punycode;
 pub(crate) mod scan;
+pub(crate) mod scheme;
 pub(crate) mod serialization;
 pub(crate) mod setters;
 pub(crate) mod unicode_ranges;
+
+pub(crate) use scheme::{SchemeType, default_port_for_scheme};
 
 use alloc::borrow::{Cow, ToOwned};
 use alloc::string::String;
@@ -161,54 +164,6 @@ pub(crate) fn parse<'i>(
         for_setter: false,
     }
     .parse_url(trimmed)
-}
-
-// ---------------------------------------------------------------------------
-// Scheme helpers
-// ---------------------------------------------------------------------------
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub(crate) enum SchemeType {
-    File,
-    SpecialNotFile,
-    NotSpecial,
-}
-
-impl SchemeType {
-    #[inline]
-    pub(crate) fn is_special(self) -> bool {
-        !matches!(self, Self::NotSpecial)
-    }
-
-    #[inline]
-    pub(crate) fn is_file(self) -> bool {
-        matches!(self, Self::File)
-    }
-}
-
-impl From<&str> for SchemeType {
-    fn from(s: &str) -> Self {
-        match s {
-            "http" | "https" | "ws" | "wss" | "ftp" => Self::SpecialNotFile,
-            "file" => Self::File,
-            _ => Self::NotSpecial,
-        }
-    }
-}
-
-fn default_port(scheme: &str) -> Option<u16> {
-    match scheme {
-        "http" | "ws" => Some(80),
-        "https" | "wss" => Some(443),
-        "ftp" => Some(21),
-        _ => None,
-    }
-}
-
-/// Public crate helper for origin serialization / setters.
-#[inline]
-pub(crate) fn default_port_for_scheme(scheme: &str) -> Option<u16> {
-    default_port(scheme)
 }
 
 /// Parse a host for URL setters (mirrors rust-url `Parser::parse_host`).
@@ -1100,7 +1055,7 @@ impl<'b, 'i> Parser<'b, 'i> {
 
         let (port, remaining) = if let Some(remaining) = remaining.split_prefix_char(':') {
             let scheme = &self.serialization.as_str()[..scheme_end as usize];
-            let default = default_port(scheme);
+            let default = default_port_for_scheme(scheme);
             let (port, remaining) = Self::parse_port(remaining, default)?;
             if let Some(port) = port {
                 self.serialization.push(':');

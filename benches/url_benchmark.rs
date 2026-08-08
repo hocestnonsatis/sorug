@@ -13,6 +13,8 @@ const FAST_PATH_ASCII: &str = "https://example.com/api/v1/users";
 const COMPLEX_QUERY_FRAGMENT: &str =
     "https://user:password@api.example.com:8443/v1/search?q=rust+performance&sort=desc#results";
 const IDNA_PUNYCODE: &str = "https://türkçe.com/iletisim";
+/// Long ACE (>128 octets) — regression guard for growable Punycode buffer.
+const IDNA_LONG_ACE: &str = "http://x\u{100b}n--LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLwssf/";
 const FILE_EDGE_CASE: &str = "file:///C:/Windows/System32/drivers/etc/hosts";
 const JOIN_BASE: &str = "https://example.com/dir/page";
 const JOIN_REL: &str = "../other?x=1#f";
@@ -24,6 +26,7 @@ fn bench_url_parsers(c: &mut Criterion) {
         ("Fast_Path_ASCII", FAST_PATH_ASCII),
         ("Complex_Query_Fragment", COMPLEX_QUERY_FRAGMENT),
         ("IDNA_Punycode", IDNA_PUNYCODE),
+        ("IDNA_Long_ACE", IDNA_LONG_ACE),
         ("File_Edge_Case", FILE_EDGE_CASE),
     ];
 
@@ -103,6 +106,18 @@ fn bench_mutations(c: &mut Criterion) {
         b.iter(|| {
             let again = Url::parse(black_box(href.as_str())).expect("reparse");
             black_box(again.href().len())
+        });
+    });
+
+    group.bench_function("sorug_set_pathname_idempotent", |b| {
+        let mut url = Url::parse(FAST_PATH_ASCII)
+            .expect("parse")
+            .into_owned();
+        // Warm owned buffer once; measure no-op setter path.
+        url.set_pathname("/api/v1/users");
+        b.iter(|| {
+            url.set_pathname(black_box("/api/v1/users"));
+            black_box(url.href().len())
         });
     });
 

@@ -628,3 +628,47 @@ fn regression_pinned_outcomes() {
         assert_round_trip(&u);
     }
 }
+
+/// Empty `host` setter must not leave credentials without a host (mutate fuzz).
+#[test]
+fn set_host_empty_with_password_rejected() {
+    let mut url = parse_no_panic("p://:%5B@!").expect("parse").into_owned();
+    assert_eq!(url.href(), "p://:%5B@!");
+    assert!(url.set_host("").is_err());
+    assert_eq!(url.href(), "p://:%5B@!");
+    assert_round_trip(&url);
+}
+
+/// Anarchist `/.` marker must be dropped on path clear so href round-trips.
+#[test]
+fn path_segments_clear_anarchist_round_trip() {
+    let mut url = parse_no_panic("gi:/.//Z%[4file2222")
+        .expect("parse")
+        .into_owned();
+    url.path_segments_mut().expect("can be base").clear();
+    assert_eq!(url.href(), "gi:/");
+    assert_eq!(url.path(), "/");
+    assert_round_trip(&url);
+}
+
+/// Daily fuzz-smoke 2026-08-08: long Punycode ACE (>128 octets) must succeed
+/// under WHATWG `beStrict = false` (Node/ada/servo agree).
+#[test]
+fn long_ace_label_fuzz_smoke_2026_08_08() {
+    let input = "ftp:f.x%E1%80%8Bn--maLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLALLLLLLLLLLLPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPRPPPPPPPPPPPPPPPPPPPPPPLLLLLLLLLLLLLLLLLLLLLLLLLLLLLwssf#fa.@04/:";
+    assert_matches_ada(input);
+    let u = parse_no_panic(input).expect("long ACE label");
+    assert!(
+        u.host().is_some_and(|h| h.contains("xn--") && h.len() > 128),
+        "expected long ACE host, got {:?}",
+        u.host()
+    );
+}
+
+/// Label with >256 code points after percent-decode (former hard reject).
+#[test]
+fn long_label_code_points_fuzz_2026_08_08() {
+    // Minimized from fuzz-smoke; `\r` is ignored in the host scanner.
+    let input = "Http:999999ftp99999999999999999999ftp9999999999999999999;9999999999999999999999999999999999999999999999999999999999999999996am9999999999999999999999999999999999999999999999999999999999999999999999999996am9999999%C3%A999\r999999999999999999nnnnnnnnnnnnnnnnnnnnnn999999PT";
+    assert_matches_ada(input);
+}

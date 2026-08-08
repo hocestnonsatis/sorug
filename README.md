@@ -205,6 +205,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for policies, style, and review expectati
 ## Cookbook
 
 Integration snippets and rust-url migration: [docs/cookbook.md](docs/cookbook.md).
+Known rust-url differentials: [docs/differential-allowlist.md](docs/differential-allowlist.md).
 1.0 freeze gate (no rush): [docs/1.0-gate.md](docs/1.0-gate.md).
 
 ## License

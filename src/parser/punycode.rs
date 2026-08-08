@@ -875,17 +875,43 @@ const INITIAL_N: u32 = 128;
 /// Stack buffer for typical IDN labels (DNS label ≤ 63 octets after ACE).
 const STACK_LABEL_CHARS: usize = 64;
 
+/// Soft cap on ACE output octets. WHATWG `beStrict = false` does **not** enforce
+/// the DNS 63-octet label limit, so Node/ada accept long ACE forms; keep a bound
+/// only to reject pathological growth (input already capped at 256 code points).
+const MAX_ACE_OCTETS: usize = 4096;
+
+/// Soft cap on label code points. WHATWG `beStrict = false` has no DNS length
+/// check; keep a bound only against pathological inputs (ACE octets also capped).
+const MAX_LABEL_CODE_POINTS: usize = 2048;
+
 fn encode_punycode(input: &str, out: &mut impl AppendBuf) -> Result<(), ()> {
     #![allow(clippy::many_single_char_names)] // RFC 3492 names: n, h, b, m, q, k
-    // Stack ACE buffer (DNS label ≤ 63; headroom for edge cases before reject).
-    let mut ace = [0u8; 128];
-    let mut ace_len = 0usize;
-    let push_ascii = |ace: &mut [u8; 128], ace_len: &mut usize, b: u8| -> Result<(), ()> {
-        if *ace_len >= ace.len() {
-            return Err(());
+    // Stack-first ACE buffer (typical labels ≤ 63 DNS octets). Spill to heap when
+    // WHATWG `beStrict = false` produces longer ACE (fuzz smoke 2026-08-08).
+    let mut stack_ace = [0u8; 128];
+    let mut stack_len = 0usize;
+    let mut heap_ace: Option<Vec<u8>> = None;
+    let push_ascii = |stack: &mut [u8; 128],
+                      stack_len: &mut usize,
+                      heap: &mut Option<Vec<u8>>,
+                      b: u8|
+     -> Result<(), ()> {
+        if let Some(v) = heap {
+            if v.len() >= MAX_ACE_OCTETS {
+                return Err(());
+            }
+            v.push(b);
+            return Ok(());
         }
-        ace[*ace_len] = b;
-        *ace_len += 1;
+        if *stack_len < stack.len() {
+            stack[*stack_len] = b;
+            *stack_len += 1;
+            return Ok(());
+        }
+        let mut v = Vec::with_capacity(256);
+        v.extend_from_slice(&stack[..*stack_len]);
+        v.push(b);
+        *heap = Some(v);
         Ok(())
     };
 
@@ -910,8 +936,8 @@ fn encode_punycode(input: &str, out: &mut impl AppendBuf) -> Result<(), ()> {
             len += 1;
         }
     }
-    // Oversized inputs rejected early (DNS-scale labels stay well below this).
-    if len > 256 {
+    // Oversized inputs rejected early (DoS bound; not a DNS / WHATWG limit).
+    if len > MAX_LABEL_CODE_POINTS {
         return Err(());
     }
     let chars: &[u32] = if heap.is_empty() {
@@ -923,7 +949,12 @@ fn encode_punycode(input: &str, out: &mut impl AppendBuf) -> Result<(), ()> {
     let mut basic_count = 0u32;
     for &cp in chars {
         if cp < 0x80 {
-            push_ascii(&mut ace, &mut ace_len, (cp as u8).to_ascii_lowercase())?;
+            push_ascii(
+                &mut stack_ace,
+                &mut stack_len,
+                &mut heap_ace,
+                (cp as u8).to_ascii_lowercase(),
+            )?;
             basic_count += 1;
         }
     }
@@ -931,7 +962,7 @@ fn encode_punycode(input: &str, out: &mut impl AppendBuf) -> Result<(), ()> {
     let mut h = basic_count;
     let b = basic_count;
     if b > 0 {
-        push_ascii(&mut ace, &mut ace_len, b'-')?;
+        push_ascii(&mut stack_ace, &mut stack_len, &mut heap_ace, b'-')?;
     }
 
     while (h as usize) < chars.len() {
@@ -969,11 +1000,21 @@ fn encode_punycode(input: &str, out: &mut impl AppendBuf) -> Result<(), ()> {
                         break;
                     }
                     let code = t + ((q - t) % (BASE - t));
-                    push_ascii(&mut ace, &mut ace_len, digit_to_byte(code)?)?;
+                    push_ascii(
+                        &mut stack_ace,
+                        &mut stack_len,
+                        &mut heap_ace,
+                        digit_to_byte(code)?,
+                    )?;
                     q = (q - t) / (BASE - t);
                     k = k.checked_add(BASE).ok_or(())?;
                 }
-                push_ascii(&mut ace, &mut ace_len, digit_to_byte(q)?)?;
+                push_ascii(
+                    &mut stack_ace,
+                    &mut stack_len,
+                    &mut heap_ace,
+                    digit_to_byte(q)?,
+                )?;
                 bias = adapt(delta, h + 1, h == b);
                 delta = 0;
                 h += 1;
@@ -982,7 +1023,10 @@ fn encode_punycode(input: &str, out: &mut impl AppendBuf) -> Result<(), ()> {
         delta = delta.checked_add(1).ok_or(())?;
         n = n.checked_add(1).ok_or(())?;
     }
-    let ace_str = core::str::from_utf8(&ace[..ace_len]).map_err(|_| ())?;
+    let ace_str = match &heap_ace {
+        Some(v) => core::str::from_utf8(v).map_err(|_| ())?,
+        None => core::str::from_utf8(&stack_ace[..stack_len]).map_err(|_| ())?,
+    };
     out.push_str(ace_str);
     Ok(())
 }
@@ -1027,6 +1071,24 @@ mod tests {
         assert_eq!(to_ascii("☃").unwrap(), "xn--n3h");
         assert!(to_ascii("\u{fffd}").is_err());
         assert!(to_ascii("GOO\u{a0}goo.com").is_err());
+    }
+
+    /// WHATWG `beStrict = false` does not enforce DNS 63-octet labels; ACE output
+    /// may exceed 128 octets (fuzz smoke 2026-08-08 fixed stack buffer).
+    #[test]
+    fn long_ace_label_beyond_former_stack_cap() {
+        let myanmar = '\u{100b}';
+        let label = format!("x{myanmar}n--{}wssf", "L".repeat(120));
+        let ace = to_ascii(&label).expect("long ACE must succeed under beStrict=false");
+        assert!(ace.starts_with("xn--"));
+        assert!(ace.len() > 128, "ACE len {} should exceed old 128 cap", ace.len());
+    }
+
+    #[test]
+    fn label_over_former_256_code_point_cap() {
+        let label = format!("é{}", "a".repeat(260));
+        let ace = to_ascii(&label).expect(">256 code points allowed under beStrict=false");
+        assert!(ace.starts_with("xn--"));
     }
 
     #[test]

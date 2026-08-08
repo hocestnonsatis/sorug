@@ -5,6 +5,11 @@
 use memchr::{memchr, memchr2, memchr3, memrchr};
 
 /// Inputs shorter than this use register-level SWAR instead of `memchr`.
+///
+/// Tuned for URL component scans (host/path/query): most authority and path
+/// segments are well under 64 bytes; `memchr`'s setup cost wins only on longer
+/// buffers. Keep in sync with Criterion `url_parse` / mutation benches — do not
+/// raise without evidence on Fast_Path_ASCII and Complex_Query_Fragment.
 const SWAR_THRESHOLD: usize = 64;
 
 const ONES: u64 = 0x0101_0101_0101_0101;

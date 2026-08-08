@@ -67,7 +67,22 @@ impl PathSegmentsMut<'_, '_> {
     /// Remove all segments, leaving the minimal `url.path() == "/"`.
     pub fn clear(&mut self) -> &mut Self {
         let path_start = self.url.path_start as usize;
+        let scheme_end = self.url.scheme_end as usize;
         let ser = self.url.serialization.as_mut_string();
+        // Non-special anarchist URLs store a `/.` marker before a `//…` path.
+        // Clearing must drop that marker so the href round-trips (`gi:/` not
+        // `gi:/./`, which re-parses as `gi:/`).
+        let anarchist = path_start == scheme_end + 3
+            && ser.as_bytes().get(scheme_end + 1) == Some(&b'/')
+            && ser.as_bytes().get(scheme_end + 2) == Some(&b'.');
+        if anarchist {
+            let new_path_start = scheme_end + 1;
+            ser.truncate(new_path_start);
+            ser.push('/');
+            self.url.path_start = to_u32(new_path_start).unwrap_or(self.url.path_start);
+            self.after_first_slash = new_path_start + 1;
+            return self;
+        }
         if ser.as_bytes().get(path_start) == Some(&b'/') {
             ser.truncate(path_start + 1);
             self.after_first_slash = path_start + 1;

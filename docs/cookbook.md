@@ -123,6 +123,37 @@ match Url::parse(input) {
 Breaking note when coming from sorug 0.3: opaque origins no longer compare equal
 to each other.
 
+## Ecosystem (reqwest / hyper)
+
+`sorug` does not depend on HTTP clients. Pass `Url::as_str()` / `href()` (or
+`into_owned()` for `'static`) into libraries that take `&str` / `Uri`:
+
+```rust
+use sorug::Url;
+
+let url = Url::parse("https://example.com/api")?.into_owned();
+
+// reqwest (blocking or async): accept &str
+// let resp = reqwest::blocking::get(url.as_str())?;
+
+// hyper / http crate: use the `http` feature
+#[cfg(feature = "http")]
+{
+    let uri: http::Uri = url.to_uri()?;
+    let _ = uri;
+}
+```
+
+Prefer `into_owned()` before storing a URL on a client or request builder so the
+backing is not tied to a temporary `&str`.
+
+## Known rust-url divergences
+
+When migrating tests that compared against servo/`url`, prefer **Node/ada/WPT**
+as the oracle. Documented differentials (file empty segments, path encode of
+`^`/`{`/`}`/`` ` ``, empty `@` authority, IDNA CheckBidi gaps, …) live in
+[`differential-allowlist.md`](differential-allowlist.md).
+
 ## File paths and sockets (`std`)
 
 ```rust
@@ -167,3 +198,6 @@ See [`ffi/README.md`](../ffi/README.md). Credential and host setters
 (`sorug_set_username`, `sorug_set_password`, `sorug_set_host`) invalidate prior
 getter pointers — refetch after mutation. SearchParams and file-path helpers stay
 Rust-only; pin GitHub Release binaries to a tag (`sorug-ffi` is not on crates.io).
+
+New C exports are demand-driven only; ABI may change with workspace tags until a
+future FFI freeze. Keep `sorug-ffi` off crates.io (`publish = false`).

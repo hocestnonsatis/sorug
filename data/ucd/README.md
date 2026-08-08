@@ -21,3 +21,18 @@ cargo test --test wpt --test wpt_setters
 When bumping the major Unicode version, review `../idna_overlay.txt` for deltas
 that Node/WPT still need, then cut a **minor** crate release (e.g. 0.6) with a
 CHANGELOG note. Do not refresh at compile time — only via this script.
+
+## Unicode 18 gate (not ready as of 2026-08-08)
+
+Do **not** bump until all of the following are true:
+
+1. Final (non-draft) `IdnaMappingTable.txt` published for 18.x under
+   `https://www.unicode.org/Public/idna/18.0.0/` **or**
+   `https://www.unicode.org/Public/18.0.0/idna/` (see `refresh-ucd.sh` layout).
+2. Matching UCD extracts (`DerivedBidiClass`, `Scripts`, `DerivedJoiningType`)
+   available for the same version.
+3. Node/ada oracle behavior on the new tables is checked against WPT
+   (`cargo test --test wpt --test wpt_setters`) and differential fuzz smoke.
+
+Until then, stay on the pin in `UNICODE_VERSION` (**17.0.0**). Draft UCD alone
+is insufficient.

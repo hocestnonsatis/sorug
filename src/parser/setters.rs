@@ -298,6 +298,7 @@ impl Url<'_> {
 
         if is_empty
             && (!self.username().is_empty()
+                || !self.password().is_empty()
                 || matches!(opt_port, Some(Some(_)))
                 || self.port_u16().is_some())
         {
@@ -377,6 +378,10 @@ impl Url<'_> {
     /// Quirks `pathname` setter (no-op if opaque path).
     pub fn set_pathname(&mut self, new_pathname: &str) {
         if self.cannot_be_a_base() {
+            return;
+        }
+        // Idempotent fast path: skip CoW + path reparse when already equal.
+        if new_pathname.starts_with('/') && self.pathname() == new_pathname {
             return;
         }
         let special = SchemeType::from(self.scheme()).is_special();
@@ -464,6 +469,15 @@ impl Url<'_> {
 
     /// Quirks `search` setter.
     pub fn set_search(&mut self, new_search: &str) {
+        let current = self.search();
+        let already = match new_search {
+            "" => current.is_empty(),
+            _ if new_search.starts_with('?') => current == new_search,
+            _ => current.strip_prefix('?') == Some(new_search),
+        };
+        if already {
+            return;
+        }
         self.set_query(match new_search {
             "" => None,
             _ if new_search.starts_with('?') => Some(&new_search[1..]),
@@ -500,6 +514,15 @@ impl Url<'_> {
 
     /// Quirks `hash` setter.
     pub fn set_hash(&mut self, new_hash: &str) {
+        let current = self.hash();
+        let already = match new_hash {
+            "" => current.is_empty(),
+            _ if new_hash.starts_with('#') => current == new_hash,
+            _ => current.strip_prefix('#') == Some(new_hash),
+        };
+        if already {
+            return;
+        }
         self.set_fragment(match new_hash {
             "" => None,
             _ if new_hash.starts_with('#') => Some(&new_hash[1..]),
