@@ -10,6 +10,7 @@
 //! - Getter output pointers borrow the handle's serialization (or an internal
 //!   origin cache) and are valid until the handle is freed **or mutated**.
 
+use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
@@ -145,6 +146,51 @@ pub unsafe extern "C" fn sorug_join(
         Ok(url) => new_handle(url),
         Err(_) => ptr::null_mut(),
     }
+}
+
+/// Build a relative reference from `base` to `target` (same-origin only).
+///
+/// Returns a heap-allocated NUL-terminated UTF-8 string, or `NULL` when no
+/// relative form exists / either handle is null. Free with [`sorug_string_free`].
+///
+/// # Safety
+///
+/// Both handles must be null or valid. The returned pointer is unique and must
+/// be freed exactly once with [`sorug_string_free`] (not [`sorug_free`]).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sorug_make_relative(
+    base: *const SorugUrl,
+    target: *const SorugUrl,
+) -> *mut c_char {
+    if base.is_null() || target.is_null() {
+        return ptr::null_mut();
+    }
+    let Some(rel) = unsafe { &*base }
+        .inner
+        .make_relative(&unsafe { &*target }.inner)
+    else {
+        return ptr::null_mut();
+    };
+    match CString::new(rel) {
+        Ok(c) => c.into_raw(),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Free a string returned by [`sorug_make_relative`].
+///
+/// Passing null is a no-op.
+///
+/// # Safety
+///
+/// `s` must be null or a unique pointer previously returned by
+/// [`sorug_make_relative`] and not yet freed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sorug_string_free(s: *mut c_char) {
+    if s.is_null() {
+        return;
+    }
+    drop(unsafe { CString::from_raw(s) });
 }
 
 /// Free a handle returned by this library.
@@ -548,6 +594,31 @@ mod tests {
             assert_eq!(port, 9000);
 
             sorug_free(joined);
+            sorug_free(base);
+        }
+    }
+
+    #[test]
+    fn make_relative_and_string_free() {
+        unsafe {
+            let base = parse_str("https://example.com/dir/page");
+            let target = parse_str("https://example.com/dir/x");
+            let rel = sorug_make_relative(base, target);
+            assert!(!rel.is_null());
+            let mut len = 0usize;
+            while *rel.add(len) != 0 {
+                len += 1;
+            }
+            let bytes = slice::from_raw_parts(rel.cast::<u8>(), len);
+            assert_eq!(bytes, b"x");
+            sorug_string_free(rel);
+
+            let other = parse_str("https://other.example/");
+            assert!(sorug_make_relative(base, other).is_null());
+            sorug_string_free(ptr::null_mut());
+
+            sorug_free(other);
+            sorug_free(target);
             sorug_free(base);
         }
     }

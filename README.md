@@ -134,7 +134,7 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 ## Current Status & Roadmap
 
-**Today (0.6.0)**
+**Today (0.6.1)**
 
 - Relative URL ops: `join` / `make_relative` / `path_segments` / `path_segments_mut` / `query_pairs(_mut)`.
 - Typed `Host` (+ `Host::parse`), rust-url-shaped getters, `Hash` / `Ord`, optional `serde` / `http`, `no_std` + `alloc`.
@@ -142,6 +142,7 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 - IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD **17.0.0** + `data/idna_overlay.txt` (Node/WPT).
 - WPT parser: **891 / 891**; WPT setters: **278 / 278**.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug); recipes in [docs/cookbook.md](docs/cookbook.md).
+- 0.6.1: long ACE Punycode spill-to-heap, setter/path round-trip fixes, idempotent setters, Criterion peer mutate + throughput.
 
 **Breaking (0.3 → 0.4)**
 

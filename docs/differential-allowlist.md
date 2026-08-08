@@ -54,3 +54,15 @@ rejects ACE that WHATWG `beStrict=false` keeps — see harness `is_idna_error` +
 2. Weekly [`fuzz-long.yml`](../.github/workflows/fuzz-long.yml) green; triage new artifacts.
 3. Weekly [`wpt-freshness.yml`](../.github/workflows/wpt-freshness.yml); open `wpt-freshness` issues stay empty.
 4. New stable diffs → minimize → regression test; update this table when adding harness allowlists.
+
+## Recent regression locks (2026-08-08)
+
+| Regression test | Source |
+| --- | --- |
+| `long_ace_label_fuzz_smoke_2026_08_08` | smoke panic: ACE >128 octets stack cap |
+| `long_label_code_points_fuzz_2026_08_08` | smoke: label >256 code points |
+| `long_ace_percent_encoded_fuzz_smoke_2026_08_08` | smoke: long host + `%C3%A9` (ada/servo ok) |
+| `set_host_empty_with_password_rejected` | mutate fuzz: `set_host("")` + password |
+| `path_segments_clear_anarchist_round_trip` | mutate: `PathSegmentsMut::clear` + `/.` |
+
+These are **algorithm fixes**, not allowlist entries — ada/Node remain the oracle.

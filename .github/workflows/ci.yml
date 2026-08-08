@@ -72,6 +72,11 @@ jobs:
         run: cargo check --no-default-features --target wasm32-unknown-unknown
       - name: Check wasm32 no_std + serde
         run: cargo check --no-default-features --features serde --target wasm32-unknown-unknown
+      # Compile lib under cfg(test) without the test harness (avoids ada-url/WASI SDK).
+      - name: Compile wasm32 lib with cfg(test) smoke
+        run: cargo rustc --lib --no-default-features --target wasm32-unknown-unknown -- --cfg test
+      - name: Compile wasm32 lib + serde with cfg(test) smoke
+        run: cargo rustc --lib --no-default-features --features serde --target wasm32-unknown-unknown -- --cfg test
 
   deny:
     name: cargo-deny

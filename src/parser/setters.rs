@@ -88,6 +88,11 @@ impl Url<'_> {
             return Err(());
         }
 
+        // Idempotent: skip CoW / offset rewrite when the scheme is unchanged.
+        if new_scheme == self.scheme() {
+            return Ok(());
+        }
+
         let old_scheme_end = self.scheme_end;
         let new_scheme_end = to_u32(new_scheme.len()).map_err(|_| ())?;
         let adjust = |index: &mut u32| {
@@ -189,6 +194,19 @@ impl Url<'_> {
     pub fn set_password(&mut self, password: &str) -> Result<(), ()> {
         if self.cannot_have_username_password_port() {
             return Err(());
+        }
+        if password.is_empty() {
+            // Idempotent: no password slot → nothing to clear.
+            if self.password_opt().is_none() {
+                return Ok(());
+            }
+        } else {
+            let mut encoded = String::new();
+            utf8_percent_encode(password, in_userinfo_encode_set, &mut encoded);
+            // Idempotent: already has the same encoded password.
+            if self.password_opt() == Some(encoded.as_str()) {
+                return Ok(());
+            }
         }
         if !password.is_empty() {
             let host_and_after = self.as_str()[self.host_start as usize..].to_owned();
@@ -370,6 +388,10 @@ impl Url<'_> {
         }
         if port.is_some() && port == default_port_for_scheme(self.scheme()) {
             port = None;
+        }
+        // Idempotent: skip serialization rewrite when the port is unchanged.
+        if port == self.port_u16() {
+            return Ok(());
         }
         self.set_port_internal(port);
         Ok(())

@@ -1081,7 +1081,11 @@ mod tests {
         let label = format!("x{myanmar}n--{}wssf", "L".repeat(120));
         let ace = to_ascii(&label).expect("long ACE must succeed under beStrict=false");
         assert!(ace.starts_with("xn--"));
-        assert!(ace.len() > 128, "ACE len {} should exceed old 128 cap", ace.len());
+        assert!(
+            ace.len() > 128,
+            "ACE len {} should exceed old 128 cap",
+            ace.len()
+        );
     }
 
     #[test]

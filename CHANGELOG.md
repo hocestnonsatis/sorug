@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-08
+
 ### Fixed
 
 - Punycode ACE encoding no longer fails when the ASCII form exceeds 128 octets
@@ -21,15 +23,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Idempotent fast paths on `set_pathname` / `set_search` / `set_hash` when the
-  component is already equal (skip CoW + reparse).
+- Idempotent fast paths on `set_pathname` / `set_search` / `set_hash` /
+  `set_scheme` / `set_port` / `set_password` when the component is already
+  equal (skip CoW + reparse / authority surgery).
 - `SchemeType` / default-port helpers live in `parser/scheme.rs` (behavior unchanged).
+
+### Added
+
+- FFI: `sorug_make_relative` + `sorug_string_free` (heap relative ref; pin GitHub
+  Release tags). SearchParams / file-path stay Rust-only.
+- Criterion peer mutate group and batch parse throughput benches.
+- CI: wasm32 lib `cfg(test)` compile smoke (no WASI / ada-url).
+- Fuzz regression for long ACE host with percent-encoded non-ASCII (`%C3%A9`).
 
 ### Docs
 
 - Differential allowlist inventory: `docs/differential-allowlist.md`.
-- Cookbook: reqwest/hyper notes + rust-url divergence pointer.
+- Cookbook: relative resolution, opaque origins, file URLs, lifetimes,
+  reqwest/hyper notes + rust-url divergence pointer.
 - Unicode 18 refresh gate documented in `data/ucd/README.md` (not ready yet).
+- 1.0-gate progress + freeze readiness procedure (no 1.0 cut yet).
 
 ## [0.6.0] - 2026-08-07
 
@@ -110,7 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-crate Punycode / UTS #46; SWAR + `memchr` delimiter scans.
 - `forbid(unsafe_code)` on the main crate.
 
-[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/hocestnonsatis/sorug/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/hocestnonsatis/sorug/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/hocestnonsatis/sorug/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/hocestnonsatis/sorug/compare/v0.3.0...v0.4.0

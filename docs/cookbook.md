@@ -26,6 +26,41 @@ sorug = { version = "0.6", default-features = false, features = ["serde"] }
 sorug = { version = "0.6", features = ["http"] }
 ```
 
+## Relative resolution
+
+`join` resolves a relative URL against a base (WHATWG basic URL parser with base).
+`make_relative` returns a relative reference from `self` to `target` when they
+share an origin; otherwise `None`.
+
+```rust
+use sorug::Url;
+
+let base = Url::parse("https://example.com/dir/page")?.into_owned();
+let joined = base.join("../other?x=1#f")?;
+assert_eq!(joined.as_str(), "https://example.com/other?x=1#f");
+
+let target = Url::parse("https://example.com/dir/x")?;
+assert_eq!(base.make_relative(&target).as_deref(), Some("x"));
+
+// Cross-origin → None
+let other = Url::parse("https://other.example/")?;
+assert!(base.make_relative(&other).is_none());
+```
+
+Path surgery without reparsing the whole URL:
+
+```rust
+use sorug::Url;
+
+let mut url = Url::parse("https://example.com/a/b")?.into_owned();
+{
+    let mut segments = url.path_segments_mut()?;
+    segments.pop();
+    segments.push("c");
+}
+assert_eq!(url.pathname(), "/a/c");
+```
+
 ## Serde (`features = ["serde"]`)
 
 `Url` serializes as its href string. Prefer `into_owned()` before storing so the
@@ -68,6 +103,30 @@ File-path helpers and `socket_addrs` require `std` (and supported OS targets).
 compare unequal (rust-url-compatible). That atomics path is available on `no_std`
 targets that provide `AtomicUsize`; ASCII serialization remains `"null"`.
 
+```rust
+use sorug::{Origin, Url};
+
+let a = Url::parse("blob:https://example.com/uuid")?;
+let b = Url::parse("data:text/plain,hi")?;
+// Opaque origins from different URLs are unique.
+assert_ne!(a.origin(), b.origin());
+assert_eq!(a.origin().serialized(), "null");
+
+let o1 = Origin::new_opaque();
+let o2 = Origin::new_opaque();
+assert_ne!(o1, o2);
+assert_eq!(o1.ascii_serialization(), "null");
+```
+
+Tuple origins serialize as `scheme://host[:port]`:
+
+```rust
+use sorug::Url;
+
+let url = Url::parse("https://example.com:8443/x")?;
+assert_eq!(url.origin().serialized(), "https://example.com:8443");
+```
+
 ## Lifetimes and `into_owned`
 
 Canonical ASCII inputs stay borrowed (`Url<'a>` tied to the input `&str`). The
@@ -84,6 +143,22 @@ fn stash(input: &str) -> Result<Url<'static>, sorug::ParseError> {
 
 `Backing` is public for advanced inspection; prefer `as_str()` / `href()` /
 `into_owned()` in application code.
+
+Storing a borrowed `Url` next to its source string is fine; do **not** keep a
+`Url` that borrows a temporary:
+
+```rust
+use sorug::Url;
+
+// Wrong: Url would dangle after the temporary String is dropped.
+// let url = Url::parse(&format!("https://{}", host))?;
+
+// Right: own the serialization.
+fn parse_host(host: &str) -> Result<Url<'static>, sorug::ParseError> {
+    let input = format!("https://{host}/");
+    Ok(Url::parse(&input)?.into_owned())
+}
+```
 
 ## Errors
 
@@ -169,6 +244,9 @@ let _addrs = url.socket_addrs(|| Ok(443))?;
 ```
 
 `from_directory_path` appends a trailing slash for directory semantics.
+
+Windows drive letters and UNC-style paths follow the same WHATWG `file:` rules
+as browsers (prefer WPT over historical rust-url quirks — see the allowlist).
 
 ## SearchParams
 

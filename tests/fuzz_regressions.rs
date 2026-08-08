@@ -659,7 +659,8 @@ fn long_ace_label_fuzz_smoke_2026_08_08() {
     assert_matches_ada(input);
     let u = parse_no_panic(input).expect("long ACE label");
     assert!(
-        u.host().is_some_and(|h| h.contains("xn--") && h.len() > 128),
+        u.host()
+            .is_some_and(|h| h.contains("xn--") && h.len() > 128),
         "expected long ACE host, got {:?}",
         u.host()
     );
@@ -671,4 +672,19 @@ fn long_label_code_points_fuzz_2026_08_08() {
     // Minimized from fuzz-smoke; `\r` is ignored in the host scanner.
     let input = "Http:999999ftp99999999999999999999ftp9999999999999999999;9999999999999999999999999999999999999999999999999999999999999999996am9999999999999999999999999999999999999999999999999999999999999999999999999996am9999999%C3%A999\r999999999999999999nnnnnnnnnnnnnnnnnnnnnn999999PT";
     assert_matches_ada(input);
+}
+
+/// Daily fuzz-smoke 2026-08-08 (post-ACE fix recheck): long host with percent-encoded
+/// non-ASCII (`%C3%A9`) must ACE-encode under `beStrict = false` (ada/servo agree).
+#[test]
+fn long_ace_percent_encoded_fuzz_smoke_2026_08_08() {
+    let input = "ftp:jjjjjjjjjjjftpjftp0PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP%C3%A9PPPPPftp0PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP";
+    assert_matches_ada(input);
+    let u = parse_no_panic(input).expect("long ACE with %C3%A9");
+    assert!(
+        u.host()
+            .is_some_and(|h| h.contains("xn--") && h.len() > 128),
+        "expected long ACE host, got {:?}",
+        u.host()
+    );
 }

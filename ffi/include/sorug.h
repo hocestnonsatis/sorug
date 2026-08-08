@@ -31,6 +31,13 @@ SorugUrl *sorug_parse_with_base(const char *input, size_t len, const SorugUrl *b
 /* Resolve `input` against `base` (both non-NULL). Returns a new handle or NULL. */
 SorugUrl *sorug_join(const SorugUrl *base, const char *input, size_t len);
 
+/*
+ * Relative reference from `base` to `target` (same-origin). Returns a heap
+ * NUL-terminated UTF-8 string, or NULL. Free with sorug_string_free (not sorug_free).
+ */
+char *sorug_make_relative(const SorugUrl *base, const SorugUrl *target);
+void sorug_string_free(char *s);
+
 void sorug_free(SorugUrl *url);
 
 /*
@@ -81,7 +88,7 @@ int sorug_set_hash(SorugUrl *url, const char *value, size_t len);
 /*
  * File-path helpers (`from_file_path` / `to_file_path`) and SearchParams remain
  * Rust-only for now — use the main `sorug` crate from Rust, or reimplement via
- * pathname/search setters from C.
+ * pathname/search setters from C. Relative resolution: sorug_join + sorug_make_relative.
  */
 
 #ifdef __cplusplus

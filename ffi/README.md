@@ -7,6 +7,15 @@ C ABI for [sorug](https://github.com/hocestnonsatis/sorug). The main Rust crate 
 Not published to crates.io — consume via this repository or [GitHub Release](https://github.com/hocestnonsatis/sorug/releases)
 prebuilt archives (`sorug-ffi-<platform>.tar.gz` / `.zip` with `sorug.h`).
 
+## ABI notes
+
+- Pin GitHub Release tags; ABI may change with the workspace version until an
+  explicit FFI freeze.
+- `sorug_make_relative` returns a heap C string — free with `sorug_string_free`
+  (never `sorug_free`).
+- SearchParams and file-path helpers stay Rust-only (demand-driven; open an issue
+  if you need them in C).
+
 ## Build
 
 From the repository root (Cargo workspace):
