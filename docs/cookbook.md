@@ -61,6 +61,19 @@ let mut url = Url::parse("https://example.com/a/b")?.into_owned();
 assert_eq!(url.pathname(), "/a/c");
 ```
 
+On `file:` URLs, the first path segment that looks like a Windows drive letter
+normalizes `|` → `:` (same as the parser), so href round-trips:
+
+```rust
+use sorug::Url;
+
+let mut url = Url::parse("file:")?.into_owned();
+url.path_segments_mut()?.push("C|");
+assert_eq!(url.as_str(), "file:///C:");
+```
+
+More DX locks (relative resolution, SearchParams, serde): `tests/integration_dx.rs`.
+
 ## Serde (`features = ["serde"]`)
 
 `Url` serializes as its href string. Prefer `into_owned()` before storing so the
@@ -277,5 +290,6 @@ See [`ffi/README.md`](../ffi/README.md). Credential and host setters
 getter pointers — refetch after mutation. SearchParams and file-path helpers stay
 Rust-only; pin GitHub Release binaries to a tag (`sorug-ffi` is not on crates.io).
 
-New C exports are demand-driven only; ABI may change with workspace tags until a
-future FFI freeze. Keep `sorug-ffi` off crates.io (`publish = false`).
+New C exports are demand-driven only (SearchParams / file-path stay Rust-only
+until requested); ABI may change with workspace tags until a future FFI freeze.
+Keep `sorug-ffi` off crates.io (`publish = false`). Pin GitHub Release tags.

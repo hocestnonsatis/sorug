@@ -6,7 +6,7 @@ use crate::Url;
 use crate::parser::percent::{
     in_path_segment_encode_set, in_special_path_segment_encode_set, utf8_percent_encode,
 };
-use crate::parser::{SchemeType, to_u32};
+use crate::parser::{SchemeType, is_windows_drive_letter, to_u32};
 
 /// Exposes methods to manipulate the path of a URL that is not cannot-be-a-base.
 ///
@@ -127,13 +127,19 @@ impl PathSegmentsMut<'_, '_> {
     ///
     /// Segments are percent-encoded with `/` and `%` also encoded (`%2F` / `%25`).
     /// `"."` and `".."` segments are ignored.
+    ///
+    /// On `file:` URLs, a Windows drive letter pushed as the first path segment
+    /// normalizes `|` → `:` (same as the basic URL parser), so the href
+    /// round-trips.
     pub fn extend<I>(&mut self, segments: I) -> &mut Self
     where
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
         let path_start = self.url.path_start as usize;
-        let special = SchemeType::from(self.url.scheme()).is_special();
+        let scheme_type = SchemeType::from(self.url.scheme());
+        let special = scheme_type.is_special();
+        let is_file = scheme_type.is_file();
         for segment in segments {
             let segment = segment.as_ref();
             if matches!(segment, "." | "..") {
@@ -146,6 +152,16 @@ impl PathSegmentsMut<'_, '_> {
                 if self.after_first_slash == path_start {
                     self.after_first_slash = path_start + 1;
                 }
+            }
+            // Match parser `SegAction::WinDrive`: first file path segment only.
+            let segment_start = ser.len();
+            let only_slashes_before = ser[path_start..segment_start].bytes().all(|b| b == b'/');
+            if is_file && only_slashes_before && is_windows_drive_letter(segment) {
+                // `is_windows_drive_letter` guarantees length 2 + ASCII letter.
+                let letter = segment.as_bytes()[0] as char;
+                ser.push(letter);
+                ser.push(':');
+                continue;
             }
             if special {
                 utf8_percent_encode(segment, in_special_path_segment_encode_set, ser);

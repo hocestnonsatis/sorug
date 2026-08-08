@@ -22,7 +22,7 @@ When bumping the major Unicode version, review `../idna_overlay.txt` for deltas
 that Node/WPT still need, then cut a **minor** crate release (e.g. 0.6) with a
 CHANGELOG note. Do not refresh at compile time — only via this script.
 
-## Unicode 18 gate (not ready as of 2026-08-08)
+## Unicode 18 gate (not ready as of 2026-08-09)
 
 Do **not** bump until all of the following are true:
 
@@ -35,4 +35,5 @@ Do **not** bump until all of the following are true:
    (`cargo test --test wpt --test wpt_setters`) and differential fuzz smoke.
 
 Until then, stay on the pin in `UNICODE_VERSION` (**17.0.0**). Draft UCD alone
-is insufficient.
+is insufficient. Re-check this gate when cutting a Unicode minor (e.g. after 0.6.x
+sustained green); do not couple Unicode 18 to the 1.0 freeze.

@@ -291,6 +291,12 @@ impl Url<'_> {
         if self.cannot_be_a_base() {
             return Err(());
         }
+        // Idempotent: skip host reparse when a non-empty quirks `host` already matches.
+        // Empty host still runs the setter — anarchist `/.` markers may need rewriting
+        // (WPT `non-spec:/.//p` + `hostname=""` → `non-spec:////p`).
+        if !host.is_empty() && host == self.host_with_port() {
+            return Ok(());
+        }
         let scheme = self.scheme().to_owned();
         let scheme_type = SchemeType::from(scheme.as_str());
         if scheme_type == SchemeType::File && host.is_empty() {
@@ -332,6 +338,11 @@ impl Url<'_> {
     pub fn set_hostname(&mut self, hostname: &str) -> Result<(), ()> {
         if self.cannot_be_a_base() {
             return Err(());
+        }
+        // Idempotent: skip host reparse when a non-empty quirks `hostname` already matches.
+        // Empty hostname still runs the setter — see `set_host` (anarchist rewrite).
+        if !hostname.is_empty() && hostname == self.hostname() {
+            return Ok(());
         }
         let scheme_type = SchemeType::from(self.scheme());
         if scheme_type == SchemeType::File && hostname.is_empty() {
@@ -403,10 +414,25 @@ impl Url<'_> {
             return;
         }
         // Idempotent fast path: skip CoW + path reparse when already equal.
-        if new_pathname.starts_with('/') && self.pathname() == new_pathname {
+        let current = self.pathname();
+        if new_pathname.starts_with('/') && current == new_pathname {
+            return;
+        }
+        // Callers often omit the leading `/` for hierarchical paths (`api/v1`).
+        if !new_pathname.is_empty()
+            && !new_pathname.starts_with('/')
+            && !new_pathname.starts_with('\\')
+            && current.as_bytes().first() == Some(&b'/')
+            && current.len() == new_pathname.len() + 1
+            && current.as_bytes()[1..] == *new_pathname.as_bytes()
+        {
             return;
         }
         let special = SchemeType::from(self.scheme()).is_special();
+        // Empty → `/` for special (and non-special without authority).
+        if new_pathname.is_empty() && current == "/" && (special || !self.has_authority()) {
+            return;
+        }
         if new_pathname.starts_with('/') || (special && new_pathname.starts_with('\\')) {
             self.set_path(new_pathname);
         } else if special || !new_pathname.is_empty() || !self.has_authority() {

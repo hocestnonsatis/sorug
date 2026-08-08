@@ -182,12 +182,23 @@ fn bench_mutations(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("sorug_set_port_idempotent", |b| {
-        let mut url = Url::parse("https://example.com:8443/")
-            .expect("parse")
-            .into_owned();
+    group.bench_function("sorug_set_hostname_idempotent", |b| {
+        let mut url = Url::parse(FAST_PATH_ASCII).expect("parse").into_owned();
         b.iter(|| {
-            let _ = url.set_port(black_box(Some(8443)));
+            let _ = url.set_hostname(black_box("example.com"));
+            black_box(url.href().len())
+        });
+    });
+
+    group.bench_function("sorug_path_segments_push", |b| {
+        b.iter(|| {
+            let mut url = Url::parse(black_box("https://example.com/a"))
+                .expect("parse")
+                .into_owned();
+            url.path_segments_mut()
+                .expect("can be base")
+                .push(black_box("b"))
+                .push(black_box("c"));
             black_box(url.href().len())
         });
     });

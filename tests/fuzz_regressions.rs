@@ -651,6 +651,35 @@ fn path_segments_clear_anarchist_round_trip() {
     assert_round_trip(&url);
 }
 
+/// Weekly fuzz-long 2026-08-08: `PathSegmentsMut::push` on `file:` must
+/// normalize a leading Windows drive letter `|` → `:` (parser does; mutator
+/// previously left `file:///h|` which re-parsed as `file:///h:`).
+#[test]
+fn path_segments_push_file_windows_drive_pipe_2026_08_08() {
+    let mut url = parse_no_panic("file:").expect("parse").into_owned();
+    assert_eq!(url.href(), "file:///");
+    url.path_segments_mut().expect("can be base").push("h|");
+    assert_eq!(url.href(), "file:///h:");
+    assert_round_trip(&url);
+
+    let mut url = parse_no_panic("file:///").expect("parse").into_owned();
+    url.path_segments_mut().expect("can be base").push("C|");
+    assert_eq!(url.href(), "file:///C:");
+    assert_round_trip(&url);
+
+    // Non-first segment must keep `|` (not a drive letter position).
+    let mut url = parse_no_panic("file:///a").expect("parse").into_owned();
+    url.path_segments_mut().expect("can be base").push("h|");
+    assert_eq!(url.href(), "file:///a/h|");
+    assert_round_trip(&url);
+
+    // set_pathname already went through the path parser — keep aligned.
+    let mut url = parse_no_panic("file:").expect("parse").into_owned();
+    url.set_pathname("h|");
+    assert_eq!(url.href(), "file:///h:");
+    assert_round_trip(&url);
+}
+
 /// Daily fuzz-smoke 2026-08-08: long Punycode ACE (>128 octets) must succeed
 /// under WHATWG `beStrict = false` (Node/ada/servo agree).
 #[test]

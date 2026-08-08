@@ -134,15 +134,15 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 ## Current Status & Roadmap
 
-**Today (0.6.1)**
+**Today (0.6.2)**
 
 - Relative URL ops: `join` / `make_relative` / `path_segments` / `path_segments_mut` / `query_pairs(_mut)`.
 - Typed `Host` (+ `Host::parse`), rust-url-shaped getters, `Hash` / `Ord`, optional `serde` / `http`, `no_std` + `alloc`.
 - File paths, unique opaque origins, `set_ip_host` / `socket_addrs`, `SearchParams` (incl. value-aware `has`/`delete`/`size`), `parse_with_params`.
 - IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD **17.0.0** + `data/idna_overlay.txt` (Node/WPT).
-- WPT parser: **891 / 891**; WPT setters: **278 / 278**.
+- WPT parser: **891 / 891**; WPT setters: **278 / 278** (harness covers `relativeTo`).
 - Docs: [docs.rs/sorug](https://docs.rs/sorug); recipes in [docs/cookbook.md](docs/cookbook.md).
-- 0.6.1: long ACE Punycode spill-to-heap, setter/path round-trip fixes, idempotent setters, Criterion peer mutate + throughput.
+- 0.6.2: `PathSegmentsMut` file Windows drive `|`→`:` (fuzz-long); broader idempotent setters; DX integration tests.
 
 **Breaking (0.3 → 0.4)**
 

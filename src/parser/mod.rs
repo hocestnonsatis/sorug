@@ -389,8 +389,10 @@ pub(crate) fn to_u32(i: usize) -> Result<u32, ParseError> {
 // Windows drive letter helpers
 // ---------------------------------------------------------------------------
 
+/// WHATWG "Windows drive letter" (`A:` / `A|`). Used by the path parser and
+/// [`crate::path_segments`] so mutation round-trips match parse normalization.
 #[inline]
-fn is_windows_drive_letter(segment: &str) -> bool {
+pub(crate) fn is_windows_drive_letter(segment: &str) -> bool {
     segment.len() == 2 && starts_with_windows_drive_letter(segment)
 }
 

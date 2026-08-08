@@ -267,6 +267,24 @@ fn positive_file_scheme() {
     });
 }
 
+/// WHATWG Windows drive letter: first `file:` path segment normalizes `|` → `:`.
+#[test]
+fn positive_file_windows_drive_pipe_normalized() {
+    let mut url = sorug("file:");
+    url.path_segments_mut().unwrap().push("h|");
+    assert_eq!(url.as_str(), "file:///h:");
+    assert_eq!(Url::parse(url.as_str()).unwrap().as_str(), "file:///h:");
+
+    let mut url = sorug("file:///x");
+    url.path_segments_mut().unwrap().clear().push("D|");
+    assert_eq!(url.as_str(), "file:///D:");
+
+    // Later segments keep `|`.
+    let mut url = sorug("file:///a");
+    url.path_segments_mut().unwrap().push("h|");
+    assert_eq!(url.as_str(), "file:///a/h|");
+}
+
 #[test]
 fn positive_extend_chain_and_joinlike() {
     assert_match("extend multi", "https://example.com/", |s, v| {

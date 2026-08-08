@@ -54,6 +54,8 @@ struct TestCase {
     /// WHATWG origin ASCII serialization (`"null"` or `"scheme://host[:port]"`).
     origin: Option<String>,
     comment: Option<String>,
+    /// WPT tag: without a base this case fails, but it parses against a suitable
+    /// non-null base (`non-opaque-path-base` or `any-base`). See url/README.md.
     #[serde(default, rename = "relativeTo")]
     relative_to: Option<String>,
     /// Stringification of `URL.searchParams` when present in the fixture.
@@ -142,14 +144,109 @@ fn run_case(case: &TestCase) -> Result<(), String> {
     let result = Url::parse_with_base(&case.input, base.as_ref());
 
     if case.expects_failure() {
-        return match result {
-            Err(_) => Ok(()),
-            Ok(url) => Err(format!("expected parse failure, got href {:?}", url.href())),
-        };
+        match result {
+            Err(_) => {}
+            Ok(url) => {
+                return Err(format!("expected parse failure, got href {:?}", url.href()));
+            }
+        }
+        // `relativeTo` cases fail without a base but succeed against a suitable base.
+        if let Some(rel) = case.relative_to.as_deref() {
+            return assert_relative_to_succeeds(&case.input, rel);
+        }
+        // Absolute failure: also reject against a normal hierarchical base.
+        if case.base.is_none() {
+            let hierarchical = Url::parse("https://example.org/foo/bar")
+                .map_err(|e| format!("hierarchical base parse: {e}"))?;
+            if Url::parse_with_base(&case.input, Some(&hierarchical)).is_ok() {
+                return Err(format!(
+                    "expected absolute failure, but <{}> parsed against hierarchical base",
+                    case.input.escape_default()
+                ));
+            }
+        }
+        return Ok(());
     }
 
     let url = result.map_err(|e| format!("expected success, got {e}"))?;
     assert_success_components(&url, case)
+}
+
+/// Extra coverage for WPT `relativeTo` (see web-platform-tests/wpt url/README.md).
+///
+/// `non-opaque-path-base`: succeeds against at least one hierarchical base (often
+/// same-scheme special, e.g. `http:` input needs an `http:` base). Must still fail
+/// against opaque-path bases.
+/// `any-base`: succeeds against hierarchical and opaque-path bases.
+fn assert_relative_to_succeeds(input: &str, kind: &str) -> Result<(), String> {
+    const HIERARCHICAL: &[&str] = &[
+        "http://example.org/foo/bar",
+        "https://example.org/foo/bar",
+        "file:///tmp/x",
+        "ws://example.org/x",
+        "ftp://example.org/x",
+    ];
+    const OPAQUE: &[&str] = &["mailto:user@example.org", "data:text/plain,hi"];
+
+    let parse_ok = |base: &str| -> Result<bool, String> {
+        let base_url =
+            Url::parse(base).map_err(|e| format!("base {base:?} failed to parse: {e}"))?;
+        Ok(Url::parse_with_base(input, Some(&base_url)).is_ok())
+    };
+
+    match kind {
+        "non-opaque-path-base" => {
+            let mut any_hier = false;
+            for base in HIERARCHICAL {
+                if parse_ok(base)? {
+                    any_hier = true;
+                    break;
+                }
+            }
+            if !any_hier {
+                return Err(
+                    "relativeTo=non-opaque-path-base: expected success against some hierarchical base"
+                        .into(),
+                );
+            }
+            for base in OPAQUE {
+                if parse_ok(base)? {
+                    return Err(format!(
+                        "relativeTo=non-opaque-path-base: unexpectedly parsed against opaque-path base {base}"
+                    ));
+                }
+            }
+            Ok(())
+        }
+        "any-base" => {
+            let mut any_hier = false;
+            for base in HIERARCHICAL {
+                if parse_ok(base)? {
+                    any_hier = true;
+                    break;
+                }
+            }
+            if !any_hier {
+                return Err(
+                    "relativeTo=any-base: expected success against some hierarchical base".into(),
+                );
+            }
+            let mut any_opaque = false;
+            for base in OPAQUE {
+                if parse_ok(base)? {
+                    any_opaque = true;
+                    break;
+                }
+            }
+            if !any_opaque {
+                return Err(
+                    "relativeTo=any-base: expected success against some opaque-path base".into(),
+                );
+            }
+            Ok(())
+        }
+        other => Err(format!("unknown relativeTo value: {other:?}")),
+    }
 }
 
 fn assert_success_components(url: &Url, case: &TestCase) -> Result<(), String> {

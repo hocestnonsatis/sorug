@@ -20,6 +20,10 @@ algorithm fixes when sorug is wrong; allowlist only when rust-url is the outlier
 | `is_known_rust_url_sticky_drive_dotdot` / `relative_drive_collapse` | Sticky Windows drive / `|` through `..` | ada / sorug drop remnants |
 | `is_known_rust_url_file_parse_leniency` | Accepts some `file:` forms sorug rejects | Align with ada/Chrome |
 
+**Not allowlisted (fixed 2026-08-09):** `PathSegmentsMut::push("X|")` as the first
+`file:` segment must normalize to `X:` (parser already did). Regression:
+`path_segments_push_file_windows_drive_pipe_2026_08_08`.
+
 ## Authority
 
 | Allowlist helper | What rust-url does | Why sorug differs |
@@ -64,5 +68,6 @@ rejects ACE that WHATWG `beStrict=false` keeps — see harness `is_idna_error` +
 | `long_ace_percent_encoded_fuzz_smoke_2026_08_08` | smoke: long host + `%C3%A9` (ada/servo ok) |
 | `set_host_empty_with_password_rejected` | mutate fuzz: `set_host("")` + password |
 | `path_segments_clear_anarchist_round_trip` | mutate: `PathSegmentsMut::clear` + `/.` |
+| `path_segments_push_file_windows_drive_pipe_2026_08_08` | long mutate: `file:` + `push("h|")` → `file:///h:` |
 
 These are **algorithm fixes**, not allowlist entries — ada/Node remain the oracle.

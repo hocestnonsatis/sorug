@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-09
+
+### Fixed
+
+- `PathSegmentsMut::push` / `extend` on `file:` now normalize a leading Windows
+  drive letter `|` → `:` (same as the basic URL parser). Previously
+  `file:` + `push("h|")` serialized `file:///h|`, which re-parsed as
+  `file:///h:` and failed weekly `url_mutate_fuzz` round-trip (2026-08-08).
+
+### Changed
+
+- Idempotent fast paths on `set_host` / `set_hostname` (non-empty match) and a
+  broader `set_pathname` skip when the leading `/` is omitted or empty→`/`.
+- WPT parser harness asserts `relativeTo` (`non-opaque-path-base` / `any-base`)
+  and absolute-failure cases against hierarchical bases.
+
+### Added
+
+- Integration DX tests (`make_relative`, value-aware `SearchParams`, serde href).
+- Criterion benches: `set_hostname` idempotent, `path_segments` push.
+
+### Docs
+
+- Cookbook path / file drive note; differential allowlist + 1.0-gate progress;
+  Unicode 18 gate unchanged (stay on UCD 17.0.0).
+
 ## [0.6.1] - 2026-08-08
 
 ### Fixed
@@ -123,7 +149,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-crate Punycode / UTS #46; SWAR + `memchr` delimiter scans.
 - `forbid(unsafe_code)` on the main crate.
 
-[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/hocestnonsatis/sorug/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/hocestnonsatis/sorug/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/hocestnonsatis/sorug/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/hocestnonsatis/sorug/compare/v0.4.0...v0.5.0
