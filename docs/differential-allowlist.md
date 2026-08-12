@@ -6,8 +6,22 @@ and **servo/`url` 2.5** (ICU-backed). The fuzz harness
 `is_known_rust_url_*` predicates. Oracle for regressions:
 [`tests/fuzz_regressions.rs`](../tests/fuzz_regressions.rs) (ada/Node).
 
+**Oracle hierarchy:** WPT (normative) → Node → Ada → rust-url (differential /
+ecosystem signal only).
+
 **Policy:** never “fix” sorug toward rust-url when WPT/Node disagree. Prefer
 algorithm fixes when sorug is wrong; allowlist only when rust-url is the outlier.
+
+| Consensus | Action |
+| --- | --- |
+| WPT/Node/ada same, sorug different | **sorug bug** → fix + regression |
+| WPT/Node/ada same, rust-url different | **rust-url outlier** → allowlist |
+| Oracles split | Minimize; cite normative text; prefer WPT |
+
+**Allowlist entry = semantic rule**, not a single URL. Required fields when adding:
+representative `input`, sorug result, oracle results, reason / normative
+reference, category/owner. A second exception in the same class must
+**generalize** the existing helper first — do not accumulate one-off inputs.
 
 ## Path / file
 

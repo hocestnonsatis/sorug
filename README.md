@@ -148,11 +148,13 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 - [`Origin::Opaque`](https://docs.rs/sorug/latest/sorug/enum.Origin.html) is now `Opaque(OpaqueOrigin)` with unique nonces — distinct opaque origins no longer compare equal.
 
-**Next** (toward `1.0`; no freeze yet)
+**Next** (toward `1.0` — **reliability clock**, not feature work)
 
-- Keep WPT fixtures current via [`scripts/refresh-wpt.sh`](scripts/refresh-wpt.sh); differential fuzz vs rust-url with documented divergences; weekly long fuzz via [`.github/workflows/fuzz-long.yml`](.github/workflows/fuzz-long.yml).
+- **No new public API** and **no new performance work** until 1.0; only bug fix, WPT freshness, fuzz triage, oracle allowlist hygiene (intervention rules: [docs/1.0-gate.md](docs/1.0-gate.md)).
+- Gate: **≥30 consecutive days** green daily fuzz-smoke + **≥8 consecutive weeks** green weekly long fuzz, plus current WPT 100% — see [docs/1.0-gate.md](docs/1.0-gate.md).
+- Keep fixtures current via [`scripts/refresh-wpt.sh`](scripts/refresh-wpt.sh); differential fuzz vs rust-url with [documented divergences](docs/differential-allowlist.md).
 - Unicode UCD refresh when a new major is ready (`./scripts/refresh-ucd.sh`); see [data/ucd/README.md](data/ucd/README.md).
-- When API churn stays low: run the [1.0 freeze checklist](#10-freeze-checklist) below.
+- After 1.0: migration/shim → WASM/JS → N-API (not before the cut).
 
 ### Semver and MSRV policy
 
@@ -163,14 +165,14 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 ### 1.0 freeze checklist
 
-Do **not** cut 1.0 until all boxes are true for a **sustained** low-churn period (no rush — product work continues on 0.x). Gate notes: [docs/api-audit.md](docs/api-audit.md).
+Do **not** cut 1.0 until reliability gates hold. **1.0 = trust proof**, not a perf/feature finish line. Details: [docs/1.0-gate.md](docs/1.0-gate.md), [docs/api-audit.md](docs/api-audit.md).
 
 - [x] Public surface audit signed off: `Url<'a>` lifetime, `Backing` stays public/advanced, `State` stays `doc(hidden)`, `ParseError` stays two variants — [docs/api-audit.md](docs/api-audit.md) (2026-08-07).
 - [x] rust-url migration notes complete (`host` vs `host_parsed`, port setters, origins, lifetimes) — see [docs/cookbook.md](docs/cookbook.md).
-- [ ] WPT parser + setters green on current fixtures; fuzz smoke + weekly long fuzz green; no open `wpt-freshness` regressions — **sustained** period required (no rush).
+- [ ] WPT parser + setters 100% on current fixtures; **≥30d** daily fuzz-smoke + **≥8w** weekly long fuzz green; no serious `wpt-freshness` regressions (ordinary upstream test adds do not reset the clock).
 - [ ] CHANGELOG + docs.rs + Trusted Publishing ready for the freeze cut; FFI stays `publish = false` — verify again at freeze time.
 
-**Not goals for 1.0:** historical non-WHATWG quirk parity; trading `forbid(unsafe_code)` for micro-wins; adding ICU/`idna` crates; expanding `ParseError`; hiding `Backing`.
+**Not goals for 1.0:** historical non-WHATWG quirk parity; trading `forbid(unsafe_code)` for micro-wins; adding ICU/`idna` crates; expanding `ParseError`; hiding `Backing`; URLPattern / RFC3986 modes / `unsafe` escape hatches.
 
 **C FFI**
 
