@@ -61,7 +61,10 @@ pub(crate) fn to_ascii_into(domain: &str, out: &mut impl AppendBuf) -> Result<()
     debug_assert!(!domain.is_empty());
     debug_assert!(!domain.is_ascii());
 
+    // `xn--` labels need Punycode validation, which only the full path does.
+    let has_ace = domain.split('.').any(|l| is_ace_prefixed(l));
     match scan_non_ascii(domain)? {
+        Scan::SimpleIdentity if has_ace => encode_domain_labels(domain, out)?,
         // Common IDN (Latin-1 / CJK / kana / Hangul): Punycode only — no NFC or
         // CheckBidi/CheckJoiners (those code points cannot fail those checks).
         Scan::SimpleIdentity => encode_domain_labels_simple(domain, out)?,
@@ -545,6 +548,9 @@ fn encode_domain_labels_simple(mapped: &str, out: &mut impl AppendBuf) -> Result
         if label.is_ascii() {
             out.push_str(label);
         } else {
+            if contains_forbidden_domain_code_point(label) {
+                return Err(());
+            }
             out.push_str("xn--");
             encode_punycode(label, out)?;
         }
@@ -562,6 +568,13 @@ fn encode_domain_labels(mapped: &str, out: &mut impl AppendBuf) -> Result<(), ()
         if label.is_empty() {
             continue;
         }
+        if is_ace_prefixed(label) {
+            if !ace_label_is_valid(label) {
+                return Err(());
+            }
+            out.push_str(&label.to_ascii_lowercase());
+            continue;
+        }
         // UTS #46: NFC before validity checks + Punycode. Composition can move a
         // mark onto a prior starter (e.g. n+virama+cedilla → ņ+virama), which
         // CheckJoiners must observe so ZWJ still sees CCC=Virama immediately before.
@@ -572,6 +585,11 @@ fn encode_domain_labels(mapped: &str, out: &mut impl AppendBuf) -> Result<(), ()
             nfc_owned = label.nfc().collect::<String>();
             nfc_owned.as_str()
         };
+        // Forbidden domain code points are checked after NFC: `<` + U+0338
+        // composes to U+226E (WPT toascii `<\u{ad}\u{338}` → `xn--gdh`).
+        if contains_forbidden_domain_code_point(label) {
+            return Err(());
+        }
         // Leading combining mark (no base character) — reject (ada/rust-url).
         if label.chars().next().is_some_and(is_bidi_ignored_mark) {
             return Err(());
@@ -607,10 +625,8 @@ fn uts46_map_checked(input: &str) -> Result<String, ()> {
     for c in input.chars() {
         map_char(c, &mut out);
     }
-    if out.is_empty()
-        || out.chars().any(is_disallowed_idna)
-        || contains_forbidden_domain_code_point(&out)
-    {
+    // Forbidden code points are checked per label after NFC.
+    if out.is_empty() || out.chars().any(is_disallowed_idna) {
         return Err(());
     }
     Ok(out)
@@ -1050,6 +1066,105 @@ fn digit_to_byte(d: u32) -> Result<u8, ()> {
     }
 }
 
+fn byte_to_digit(b: u8) -> Option<u32> {
+    match b {
+        b'a'..=b'z' => Some(u32::from(b - b'a')),
+        b'A'..=b'Z' => Some(u32::from(b - b'A')),
+        b'0'..=b'9' => Some(u32::from(b - b'0') + 26),
+        _ => None,
+    }
+}
+
+/// RFC 3492 decode of an ACE label body (without `xn--`). `None` on invalid
+/// Punycode (bad digit, overflow, surrogate / out-of-range code point).
+fn decode_punycode(input: &str) -> Option<Vec<char>> {
+    #![allow(clippy::many_single_char_names)] // RFC 3492 names
+    let bytes = input.as_bytes();
+    let (basic, rest) = match bytes.iter().rposition(|&b| b == b'-') {
+        Some(p) => (&bytes[..p], &bytes[p + 1..]),
+        None => (&[][..], bytes),
+    };
+    if !basic.is_ascii() {
+        return None;
+    }
+    let mut output: Vec<char> = basic.iter().map(|&b| char::from(b)).collect();
+    let mut n = INITIAL_N;
+    let mut i: u32 = 0;
+    let mut bias = INITIAL_BIAS;
+    let mut pos = 0usize;
+    while pos < rest.len() {
+        let old_i = i;
+        let mut w: u32 = 1;
+        let mut k = BASE;
+        loop {
+            let digit = byte_to_digit(*rest.get(pos)?)?;
+            pos += 1;
+            i = i.checked_add(digit.checked_mul(w)?)?;
+            let t = if k <= bias {
+                TMIN
+            } else if k >= bias.saturating_add(TMAX) {
+                TMAX
+            } else {
+                k - bias
+            };
+            if digit < t {
+                break;
+            }
+            w = w.checked_mul(BASE - t)?;
+            k = k.checked_add(BASE)?;
+        }
+        if output.len() >= MAX_LABEL_CODE_POINTS {
+            return None;
+        }
+        let len = u32::try_from(output.len()).ok()? + 1;
+        bias = adapt(i - old_i, len, old_i == 0);
+        n = n.checked_add(i / len)?;
+        i %= len;
+        output.insert(i as usize, char::from_u32(n)?);
+        i += 1;
+    }
+    Some(output)
+}
+
+/// UTS #46 (Unicode 16+) handling of an `xn--` label reached via the non-ASCII
+/// ToASCII path: the label must be ASCII, decode as Punycode, be non-empty,
+/// contain a non-ASCII code point, and the decoded label must itself be a
+/// valid (already-mapped, NFC) label. WPT `toascii.json`: `xn--tešla`,
+/// `xn--a.ß` fail; `xn--zca.ß` → `xn--zca.xn--zca`.
+fn ace_label_is_valid(label: &str) -> bool {
+    if !label.is_ascii() || label.len() <= 4 {
+        return false;
+    }
+    let Some(decoded) = decode_punycode(&label[4..]) else {
+        return false;
+    };
+    if decoded.is_empty() || decoded.iter().all(char::is_ascii) {
+        return false;
+    }
+    if decoded.iter().any(|&c| {
+        is_disallowed_idna(c)
+            || c.is_ascii_uppercase()
+            || (!c.is_ascii() && char_needs_uts46_map(c))
+            || c == '.'
+    }) {
+        return false;
+    }
+    let s: String = decoded.into_iter().collect();
+    unicode_normalization::is_nfc(&s)
+        && !contains_forbidden_domain_code_point(&s)
+        && !s.chars().next().is_some_and(is_bidi_ignored_mark)
+        && !label_fails_check_bidi(&s)
+        && !label_fails_arabic_ext_b_mix(&s)
+        && !label_fails_arabic_ext_c_mix(&s)
+        && !label_fails_ext_b_era_mark_mix(&s)
+        && !label_fails_check_joiners(&s)
+}
+
+#[inline]
+fn is_ace_prefixed(label: &str) -> bool {
+    label.len() >= 4 && label.as_bytes()[..4].eq_ignore_ascii_case(b"xn--")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1061,6 +1176,26 @@ mod tests {
             "a.b.c.xn--pokxncvks"
         );
         assert_eq!(to_ascii("XN--").unwrap(), "xn--");
+    }
+
+    #[test]
+    fn ace_labels_validated_on_non_ascii_path() {
+        // WPT toascii.json (UTS #46 v16).
+        assert!(to_ascii("xn--a.\u{df}").is_err());
+        assert!(to_ascii("xn--te\u{161}la").is_err());
+        assert!(to_ascii("xn--.\u{fc}").is_err());
+        assert_eq!(to_ascii("xn--zca.\u{df}").unwrap(), "xn--zca.xn--zca");
+        assert_eq!(to_ascii("XN--ZCA.\u{fc}").unwrap(), "xn--zca.xn--tda");
+        assert_eq!(to_ascii("<\u{ad}\u{338}").unwrap(), "xn--gdh");
+        assert!(to_ascii("<\u{fc}").is_err());
+    }
+
+    #[test]
+    fn punycode_decode_roundtrip() {
+        let d: String = decode_punycode("mnchen-3ya").unwrap().into_iter().collect();
+        assert_eq!(d, "m\u{fc}nchen");
+        assert!(decode_punycode("99999999999").is_none());
+        assert!(decode_punycode("a!").is_none());
     }
 
     #[test]

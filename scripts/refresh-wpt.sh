@@ -15,8 +15,11 @@ curl -fsSL -o "$DEST/urltestdata.json" "${BASE}/urltestdata.json"
 echo "Fetching WPT setters_tests.json → $DEST/setters_tests.json"
 curl -fsSL -o "$DEST/setters_tests.json" "${BASE}/setters_tests.json"
 
+echo "Fetching WPT toascii.json → $DEST/toascii.json"
+curl -fsSL -o "$DEST/toascii.json" "${BASE}/toascii.json"
+
 echo "Done. Checklist:"
-echo "  1. cargo test --test wpt --test wpt_setters"
+echo "  1. cargo test --test wpt --test wpt_setters --test wpt_toascii"
 echo "  2. cargo test"
 echo "  3. Commit fixture updates together with any harness fixes"
 echo "  4. Update WPT badge counts in README if totals change"

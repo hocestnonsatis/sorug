@@ -5,6 +5,7 @@
 [![docs.rs](https://docs.rs/sorug/badge.svg)](https://docs.rs/sorug)
 [![WPT](https://img.shields.io/badge/WPT-891%2F891-brightgreen)](https://github.com/hocestnonsatis/sorug)
 [![WPT setters](https://img.shields.io/badge/WPT%20setters-278%2F278-brightgreen)](https://github.com/hocestnonsatis/sorug)
+[![WPT toascii](https://img.shields.io/badge/WPT%20toascii-87%2F87-brightgreen)](https://github.com/hocestnonsatis/sorug)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE-MIT)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success)](https://github.com/hocestnonsatis/sorug/blob/main/CONTRIBUTING.md)
 
@@ -19,6 +20,7 @@
 | **Custom Punycode** | In-crate Punycode + UTS #46 mapping; membership tables from vendored Unicode UCD (`data/ucd/`) + `idna_overlay.txt` — no ICU/`idna` runtime dep. |
 | **891 / 891 WPT** | Full pass of the Web Platform Tests `urltestdata` suite shipped in-tree. |
 | **278 / 278 setters** | Full pass of WPT `setters_tests.json` (component mutators). |
+| **87 / 87 toascii** | Full pass of WPT `toascii.json` (IDNA domain to ASCII). |
 | **`forbid(unsafe_code)`** | Zero `unsafe` in library code. Correctness first; speed without memory-safety shortcuts. |
 | **`no_std` + `alloc`** | Embedded / WASM friendly (`default-features = false`). |
 
@@ -134,14 +136,15 @@ sorug = { git = "https://github.com/hocestnonsatis/sorug" }
 
 ## Current Status & Roadmap
 
-**Today (0.6.3)**
+**Today (0.6.4)**
 
 - Relative URL ops: `join` / `make_relative` / `path_segments` / `path_segments_mut` / `query_pairs(_mut)`.
 - Typed `Host` (+ `Host::parse`), rust-url-shaped getters, `Hash` / `Ord`, optional `serde` / `http`, `no_std` + `alloc`.
 - File paths, unique opaque origins, `set_ip_host` / `socket_addrs`, `SearchParams` (incl. value-aware `has`/`delete`/`size`), `parse_with_params`.
 - IDNA: in-tree Punycode + UTS #46; membership tables from vendored Unicode UCD **17.0.0** + `data/idna_overlay.txt` (Node/WPT).
-- WPT parser: **891 / 891**; WPT setters: **278 / 278** (harness covers `relativeTo`).
+- WPT parser: **891 / 891**; WPT setters: **278 / 278** (harness covers `relativeTo`); WPT toascii: **87 / 87**.
 - Docs: [docs.rs/sorug](https://docs.rs/sorug); recipes in [docs/cookbook.md](docs/cookbook.md).
+- 0.6.4: UTS #46 `xn--` label validation on the IDNA path + forbidden-code-point check after NFC; WPT `toascii.json` vendored (87/87).
 - 0.6.3: `PathSegmentsMut::pop` anarchist-marker round-trip; FFI `sorug_origin` data-race fix; serialized-length `u32` guard.
 - 0.6.2: `PathSegmentsMut` file Windows drive `|`→`:` (fuzz-long); broader idempotent setters; DX integration tests.
 

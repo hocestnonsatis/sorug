@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-10-04
+
+### Fixed
+
+- IDNA: `xn--` labels in hosts that go through the UTS #46 path (any
+  non-ASCII label present) are now validated per UTS #46 v16 — the label must
+  be ASCII, decode as Punycode, contain a non-ASCII code point, and decode to
+  a valid, NFC, already-mapped label. Previously `xn--tešla` serialized as
+  `xn--xn--tela-bxb` and `xn--a.ß` was accepted. All-ASCII hosts are
+  unchanged (`xn--a` still passes through, per WPT).
+- IDNA: forbidden domain code points are checked after NFC, so
+  `<` + U+00AD + U+0338 now maps to `xn--gdh` (≮) instead of failing.
+
+### Added
+
+- Vendored WPT `toascii.json` with a parser + `host`/`hostname` setter
+  harness (`tests/wpt_toascii.rs`, 87/87); `scripts/refresh-wpt.sh` fetches it.
+
 ## [0.6.3] - 2026-10-04
 
 ### Fixed
@@ -169,7 +187,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-crate Punycode / UTS #46; SWAR + `memchr` delimiter scans.
 - `forbid(unsafe_code)` on the main crate.
 
-[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/hocestnonsatis/sorug/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/hocestnonsatis/sorug/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/hocestnonsatis/sorug/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/hocestnonsatis/sorug/compare/v0.6.0...v0.6.1
