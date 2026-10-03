@@ -104,6 +104,7 @@ impl PathSegmentsMut<'_, '_> {
         if ser[self.after_first_slash..].ends_with('/') {
             ser.pop();
         }
+        self.drop_stale_anarchist_marker();
         self
     }
 
@@ -115,7 +116,27 @@ impl PathSegmentsMut<'_, '_> {
         }
         let last_slash = ser[self.after_first_slash..].rfind('/').unwrap_or(0);
         ser.truncate(self.after_first_slash + last_slash);
+        self.drop_stale_anarchist_marker();
         self
+    }
+
+    /// Non-special anarchist URLs (`foo:/.//b`) carry a `/.` marker only while
+    /// the path starts with `//`. After shrinking the path, remove the marker
+    /// if it is no longer needed so the href round-trips (`foo:/` not `foo:/./`).
+    fn drop_stale_anarchist_marker(&mut self) {
+        let path_start = self.url.path_start as usize;
+        let scheme_end = self.url.scheme_end as usize;
+        let ser = self.url.serialization.as_mut_string();
+        let b = ser.as_bytes();
+        let anarchist = path_start == scheme_end + 3
+            && b.get(scheme_end + 1) == Some(&b'/')
+            && b.get(scheme_end + 2) == Some(&b'.');
+        if !anarchist || ser[path_start..].starts_with("//") {
+            return;
+        }
+        ser.replace_range(scheme_end + 1..scheme_end + 3, "");
+        self.url.path_start = to_u32(scheme_end + 1).unwrap_or(self.url.path_start);
+        self.after_first_slash -= 2;
     }
 
     /// Append one segment (see [`Self::extend`]).

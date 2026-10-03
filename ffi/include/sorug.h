@@ -55,7 +55,7 @@ int sorug_hash(const SorugUrl *url, const char **out_ptr, size_t *out_len);
 
 /* ASCII origin serialization ("null" or "scheme://host[:port]"). Same pointer rules.
  * Note: may mutate an internal cache; pass a non-const SorugUrl*. */
-int sorug_origin(SorugUrl *url, const char **out_ptr, size_t *out_len);
+int sorug_origin(const SorugUrl *url, const char **out_ptr, size_t *out_len);
 
 /* Optional components: 1 present, 0 absent, -1 if url is NULL. */
 int sorug_host(const SorugUrl *url, const char **out_ptr, size_t *out_len);

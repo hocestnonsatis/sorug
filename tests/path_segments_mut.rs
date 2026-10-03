@@ -418,3 +418,19 @@ fn positive_ftp_special_encoding() {
         v.path_segments_mut().unwrap().push("a/b%c");
     });
 }
+
+#[test]
+fn pop_drops_stale_anarchist_marker() {
+    for (input, expected) in [("foo:/.//b", "foo:/"), ("foo:/.//b/", "foo:/.//b")] {
+        let mut u = sorug::Url::parse(input).unwrap();
+        if input.ends_with('/') {
+            u.path_segments_mut().unwrap().pop_if_empty();
+        } else {
+            u.path_segments_mut().unwrap().pop();
+        }
+        assert_eq!(u.href(), expected);
+        let reparsed = sorug::Url::parse(u.href()).unwrap();
+        assert_eq!(reparsed.href(), u.href());
+        assert_eq!(reparsed.pathname(), u.pathname());
+    }
+}

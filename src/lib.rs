@@ -564,6 +564,11 @@ impl<'a> Url<'a> {
         }
         let base_parsed = base.map(Url::to_parsed);
         let parsed = parser::parse(input, base_parsed.as_ref())?;
+        // Percent-encoding can grow the output (~3×); getters index the
+        // serialization with `u32` offsets (`u32::MAX` is the NONE sentinel).
+        if parsed.serialization.len() >= u32::MAX as usize {
+            return Err(ParseError::InputTooLong);
+        }
         Ok(Self::from_parsed(parsed))
     }
 

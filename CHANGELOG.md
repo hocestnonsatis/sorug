@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-04
+
+### Fixed
+
+- `PathSegmentsMut::pop` / `pop_if_empty` on non-special anarchist URLs now
+  drop the `/.` marker once the path no longer starts with `//`. Previously
+  `foo:/.//b` + `pop()` serialized `foo:/./`, which re-parses as `foo:/`.
+- `Url::parse*` returns `ParseError::InputTooLong` when the *serialized* URL
+  (after percent-encoding growth) would not fit the `u32` offset space,
+  instead of truncating offsets and risking getter panics on multi-GiB input.
+- FFI: `sorug_origin` no longer mutates the handle through a shared getter
+  (data race when called concurrently with other getters). The origin cache
+  is now a `OnceLock`; the C signature takes `const SorugUrl *` (source
+  compatible).
+
+### Docs
+
+- FFI `sorug_parse*` safety docs match behavior (null / invalid UTF-8 return
+  null); `sorug_hostname` simplified (behavior unchanged).
+
 ## [0.6.2] - 2026-08-09
 
 ### Fixed
@@ -149,7 +169,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-crate Punycode / UTS #46; SWAR + `memchr` delimiter scans.
 - `forbid(unsafe_code)` on the main crate.
 
-[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/hocestnonsatis/sorug/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/hocestnonsatis/sorug/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/hocestnonsatis/sorug/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/hocestnonsatis/sorug/compare/v0.5.0...v0.6.0

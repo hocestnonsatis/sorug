@@ -22,13 +22,13 @@ use sorug::Url;
 pub struct SorugUrl {
     inner: Url<'static>,
     /// Cached ASCII origin serialization for [`sorug_origin`].
-    origin_cache: Option<String>,
+    origin_cache: std::sync::OnceLock<String>,
 }
 
 fn new_handle(url: Url<'_>) -> *mut SorugUrl {
     Box::into_raw(Box::new(SorugUrl {
         inner: url.into_owned(),
-        origin_cache: None,
+        origin_cache: std::sync::OnceLock::new(),
     }))
 }
 
@@ -80,11 +80,11 @@ fn read_utf8<'a>(input: *const c_char, len: usize) -> Option<&'a str> {
 ///
 /// # Safety
 ///
-/// - `input` must be non-null and point to at least `len` readable bytes.
-/// - Those bytes must be valid UTF-8.
+/// - If `input` is non-null it must point to at least `len` readable bytes,
+///   and `len` must not exceed `isize::MAX`.
 ///
-/// Returns a heap-allocated handle, or null on parse failure / invalid UTF-8
-/// arguments (null pointer).
+/// Returns a heap-allocated handle, or null on parse failure, a null `input`,
+/// or bytes that are not valid UTF-8.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sorug_parse(input: *const c_char, len: usize) -> *mut SorugUrl {
     let Some(text) = read_utf8(input, len) else {
@@ -247,20 +247,21 @@ str_getter!(sorug_hash, hash);
 /// # Safety
 ///
 /// Same as other getters. Pointer remains valid until free or mutation.
+/// Safe to call concurrently with other getters on the same handle (the cache
+/// is initialized at most once); not safe concurrently with setters/free.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sorug_origin(
-    url: *mut SorugUrl,
+    url: *const SorugUrl,
     out_ptr: *mut *const c_char,
     out_len: *mut usize,
 ) -> i32 {
     if url.is_null() {
         return -1;
     }
-    let handle = unsafe { &mut *url };
-    if handle.origin_cache.is_none() {
-        handle.origin_cache = Some(handle.inner.origin().serialized());
-    }
-    let s = handle.origin_cache.as_deref().unwrap_or("null");
+    let handle = unsafe { &*url };
+    let s = handle
+        .origin_cache
+        .get_or_init(|| handle.inner.origin().serialized());
     component_out(s, out_ptr, out_len);
     0
 }
@@ -288,12 +289,8 @@ pub unsafe extern "C" fn sorug_hostname(
     if url.is_null() {
         return -1;
     }
-    let s = unsafe { &*url }.inner.hostname();
-    if s.is_empty() && unsafe { &*url }.inner.host().is_none() {
-        return optional_component(None, out_ptr, out_len);
-    }
-    component_out(s, out_ptr, out_len);
-    1
+    let inner = &unsafe { &*url }.inner;
+    optional_component(inner.host().map(|_| inner.hostname()), out_ptr, out_len)
 }
 
 /// Query without leading `?`. Returns `1` if present, `0` if absent, `-1` if null.
@@ -368,7 +365,7 @@ macro_rules! str_setter {
                 return -1;
             };
             let handle = unsafe { &mut *url };
-            handle.origin_cache = None;
+            handle.origin_cache = std::sync::OnceLock::new();
             match handle.inner.$method(text) {
                 Ok(()) => 0,
                 Err(_) => -1,
@@ -398,7 +395,7 @@ pub unsafe extern "C" fn sorug_set_pathname(
         return -1;
     };
     let handle = unsafe { &mut *url };
-    handle.origin_cache = None;
+    handle.origin_cache = std::sync::OnceLock::new();
     handle.inner.set_pathname(text);
     0
 }
@@ -417,7 +414,7 @@ pub unsafe extern "C" fn sorug_set_search(
         return -1;
     };
     let handle = unsafe { &mut *url };
-    handle.origin_cache = None;
+    handle.origin_cache = std::sync::OnceLock::new();
     handle.inner.set_search(text);
     0
 }
@@ -436,7 +433,7 @@ pub unsafe extern "C" fn sorug_set_hash(
         return -1;
     };
     let handle = unsafe { &mut *url };
-    handle.origin_cache = None;
+    handle.origin_cache = std::sync::OnceLock::new();
     handle.inner.set_hash(text);
     0
 }
@@ -455,7 +452,7 @@ pub unsafe extern "C" fn sorug_set_href(
         return -1;
     };
     let handle = unsafe { &mut *url };
-    handle.origin_cache = None;
+    handle.origin_cache = std::sync::OnceLock::new();
     match handle.inner.set_href(text) {
         Ok(()) => 0,
         Err(_) => -1,
