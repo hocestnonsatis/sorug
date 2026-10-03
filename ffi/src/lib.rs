@@ -36,7 +36,11 @@ fn component_out(s: &str, out_ptr: *mut *const c_char, out_len: *mut usize) {
     // SAFETY: caller guarantees out_ptr/out_len are writable (or null).
     unsafe {
         if !out_ptr.is_null() {
-            *out_ptr = s.as_ptr().cast::<c_char>();
+            *out_ptr = if s.is_empty() {
+                c"".as_ptr()
+            } else {
+                s.as_ptr().cast::<c_char>()
+            };
         }
         if !out_len.is_null() {
             *out_len = s.len();

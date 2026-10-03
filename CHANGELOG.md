@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-10-04
+
+### Fixed
+
+- Setters now panic (`URL length exceeds u32 limit`) if the mutation causes the
+  serialized URL length to exceed 4 GiB (`u32::MAX`). Previously, they silently
+  corrupted internal offsets to `NONE`.
+- FFI: Component getters (like `sorug_hostname` or `sorug_username`) now return
+  a static pointer (`""`) rather than a potentially dangling pointer when the
+  component is empty.
+- Avoided unnecessary string allocations in `set_host` and `set_port_str`.
+
+
 ## [0.6.4] - 2026-10-04
 
 ### Fixed
@@ -187,7 +200,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-crate Punycode / UTS #46; SWAR + `memchr` delimiter scans.
 - `forbid(unsafe_code)` on the main crate.
 
-[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.4...HEAD
+[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.5...HEAD
+[0.6.5]: https://github.com/hocestnonsatis/sorug/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/hocestnonsatis/sorug/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/hocestnonsatis/sorug/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/hocestnonsatis/sorug/compare/v0.6.1...v0.6.2

@@ -297,8 +297,8 @@ impl Url<'_> {
         if !host.is_empty() && host == self.host_with_port() {
             return Ok(());
         }
-        let scheme = self.scheme().to_owned();
-        let scheme_type = SchemeType::from(scheme.as_str());
+        let scheme_type = SchemeType::from(self.scheme());
+        let default_port = default_port_for_scheme(self.scheme());
         if scheme_type == SchemeType::File && host.is_empty() {
             self.set_host_internal(Host::Domain(Cow::Owned(String::new())), Some(None));
             return Ok(());
@@ -312,7 +312,7 @@ impl Url<'_> {
             if remaining.is_empty() {
                 None
             } else {
-                parse_port_setter(remaining, default_port_for_scheme(&scheme))
+                parse_port_setter(remaining, default_port)
                     .ok()
                     .map(|(port, _)| port)
             }
@@ -381,9 +381,9 @@ impl Url<'_> {
             self.set_port_internal(None);
             return Ok(());
         }
-        let scheme = self.scheme().to_owned();
+        let default_port = default_port_for_scheme(self.scheme());
         let (new_port, _) =
-            parse_port_setter(Input::new_no_trim(port), default_port_for_scheme(&scheme))
+            parse_port_setter(Input::new_no_trim(port), default_port)
                 .map_err(|_| ())?;
         self.set_port_internal(new_port);
         Ok(())
@@ -449,7 +449,7 @@ impl Url<'_> {
     /// Replace the path (or opaque path) serialization.
     pub fn set_path(&mut self, mut path: &str) {
         let after_path = self.take_after_path();
-        let old_after_path_pos = to_u32(self.serialization.len()).unwrap_or(u32::MAX);
+        let old_after_path_pos = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
         let cannot_be_a_base = self.cannot_be_a_base();
         let scheme_type = SchemeType::from(self.scheme());
         let scheme_end = self.scheme_end;
@@ -500,7 +500,7 @@ impl Url<'_> {
             self.path_start = path_start;
         }
 
-        let new_after_path_pos = to_u32(new_ser.len()).unwrap_or(u32::MAX);
+        let new_after_path_pos = u32::try_from(new_ser.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
         new_ser.push_str(&after_path);
         *self.serialization.as_mut_string() = new_ser;
 
@@ -547,7 +547,7 @@ impl Url<'_> {
 
         if let Some(input) = query {
             let scheme_type = SchemeType::from(self.scheme());
-            self.query_start = to_u32(self.serialization.len()).unwrap_or(Self::NONE);
+            self.query_start = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
             let mut prefix = core::mem::take(self.serialization.as_mut_string());
             prefix.push('?');
             let mut parser = Parser::for_setter(SerializationBuf::from_owned(prefix));
@@ -588,7 +588,7 @@ impl Url<'_> {
             self.fragment_start = Self::NONE;
         }
         if let Some(input) = fragment {
-            self.fragment_start = to_u32(self.serialization.len()).unwrap_or(Self::NONE);
+            self.fragment_start = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
             let ser = self.serialization.as_mut_string();
             ser.push('#');
             let prefix = core::mem::take(ser);
@@ -653,7 +653,7 @@ impl Url<'_> {
     fn restore_fragment(&mut self, fragment: Option<String>) {
         if let Some(fragment) = fragment {
             debug_assert_eq!(self.fragment_start, Self::NONE);
-            self.fragment_start = to_u32(self.serialization.len()).unwrap_or(Self::NONE);
+            self.fragment_start = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
             let ser = self.serialization.as_mut_string();
             ser.push('#');
             ser.push_str(&fragment);
@@ -674,7 +674,7 @@ impl Url<'_> {
     }
 
     pub(crate) fn restore_after_path(&mut self, old_after_path_position: u32, after_path: &str) {
-        let new_after_path_position = to_u32(self.serialization.len()).unwrap_or(u32::MAX);
+        let new_after_path_position = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
         let adjust = |index: &mut u32| {
             if *index != Self::NONE {
                 *index = index
@@ -726,7 +726,7 @@ impl Url<'_> {
                     let _ = write!(ser, ":{new}");
                 }
                 let old_path_start = self.path_start;
-                let new_path_start = to_u32(self.serialization.len()).unwrap_or(old_path_start);
+                let new_path_start = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
                 self.path_start = new_path_start;
                 let adjust = |index: &mut u32| {
                     if *index != Self::NONE {
@@ -774,7 +774,7 @@ impl Url<'_> {
             let _ = write!(ser, "{host}");
         }
 
-        self.host_end = to_u32(self.serialization.len()).unwrap_or(self.host_start);
+        self.host_end = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
 
         // Host flags
         self.flags.remove(UrlFlags::HOST_IPV4);
@@ -804,7 +804,7 @@ impl Url<'_> {
             }
         }
 
-        let new_suffix_pos = to_u32(self.serialization.len()).unwrap_or(old_suffix_pos);
+        let new_suffix_pos = u32::try_from(self.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
         self.serialization.as_mut_string().push_str(&suffix);
 
         let adjust = |index: &mut u32| {
