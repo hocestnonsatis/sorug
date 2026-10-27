@@ -198,6 +198,13 @@ fn char_needs_uts46_map(c: char) -> bool {
     if uts46_needs_map_cp(c) || maps_nfkc_via_space(c) || letterlike_nfkc_ascii(c).is_some() {
         return true;
     }
+    // Cherokee capitals (U+13A0..=U+13F5) are canonical in UTS #46: small
+    // letters map *up* to them, so they must not be flagged as needing a map
+    // just because `to_lowercase()` differs. (See map_char Cherokee arms.)
+    let u = c as u32;
+    if (0x13A0..=0x13F5).contains(&u) {
+        return false;
+    }
     if c.is_ascii() {
         return c.is_ascii_uppercase();
     }

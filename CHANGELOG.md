@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-10-27
+
+### Fixed
+
+- IDNA: Cherokee capital code points (`U+13A0..=U+13F5`) are canonical in UTS #46
+  (small letters map up to them), so they are no longer flagged as "needs map"
+  in `ace_label_is_valid`. Fixes a differential panic where a percent-encoded
+  zero-width space collapsed an input label into an `xn--` ACE label that
+  rust-url accepted but sorug rejected.
+- Formatting: ran `cargo fmt` so CI's format check passes.
+
 ## [0.6.5] - 2026-10-04
 
 ### Fixed
@@ -200,7 +211,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In-crate Punycode / UTS #46; SWAR + `memchr` delimiter scans.
 - `forbid(unsafe_code)` on the main crate.
 
-[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/hocestnonsatis/sorug/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/hocestnonsatis/sorug/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/hocestnonsatis/sorug/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/hocestnonsatis/sorug/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/hocestnonsatis/sorug/compare/v0.6.2...v0.6.3

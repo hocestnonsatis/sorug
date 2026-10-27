@@ -39,7 +39,8 @@ pub struct PathSegmentsMut<'m, 'u> {
 pub(crate) fn new<'m, 'u>(url: &'m mut Url<'u>) -> PathSegmentsMut<'m, 'u> {
     url.serialization.ensure_owned();
     let after_path = url.take_after_path();
-    let old_after_path_position = u32::try_from(url.serialization.len()).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
+    let old_after_path_position = u32::try_from(url.serialization.len())
+        .unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
 
     let path_start = url.path_start as usize;
     let after_first_slash = if url.as_str().as_bytes().get(path_start) == Some(&b'/') {
@@ -79,7 +80,8 @@ impl PathSegmentsMut<'_, '_> {
             let new_path_start = scheme_end + 1;
             ser.truncate(new_path_start);
             ser.push('/');
-            self.url.path_start = u32::try_from(new_path_start).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
+            self.url.path_start = u32::try_from(new_path_start)
+                .unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
             self.after_first_slash = new_path_start + 1;
             return self;
         }
@@ -135,7 +137,8 @@ impl PathSegmentsMut<'_, '_> {
             return;
         }
         ser.replace_range(scheme_end + 1..scheme_end + 3, "");
-        self.url.path_start = u32::try_from(scheme_end + 1).unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
+        self.url.path_start = u32::try_from(scheme_end + 1)
+            .unwrap_or_else(|_| panic!("URL length exceeds u32 limit"));
         self.after_first_slash -= 2;
     }
 
